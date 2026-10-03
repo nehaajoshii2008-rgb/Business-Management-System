@@ -1,0 +1,39 @@
+{
+  "name": "ISBMS Business Management System",
+  "short_name": "ISBMS",
+  "description": "Enterprise Billing, Multi-Store ERP, Stock Inventory & Digital Khata",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/images/bms_icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/images/bms_logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "POS Terminal",
+      "short_name": "POS",
+      "description": "High-Speed Billing Terminal",
+      "url": "/pos/",
+      "icons": [{ "src": "/static/images/bms_icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Digital Khata",
+      "short_name": "Khata",
+      "description": "Customer Credit Ledger",
+      "url": "/khata/",
+      "icons": [{ "src": "/static/images/bms_icon.svg", "sizes": "192x192" }]
+    }
+  ]
+}

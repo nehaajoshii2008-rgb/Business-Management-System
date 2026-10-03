@@ -1,0 +1,79 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Admin Portal | ISBMS Business Management System</title>
+    <link rel="icon" type="image/svg+xml" href="{% static 'images/bms_icon.svg' %}">
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body {
+            background: radial-gradient(circle at top right, rgba(59, 130, 246, 0.2), transparent 60%), #090d16;
+            color: #f8fafc;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .admin-auth-card {
+            background-color: #0f172a;
+            border: 1px solid #3b82f6;
+            border-radius: 16px;
+            box-shadow: 0 0 35px rgba(59, 130, 246, 0.25);
+            width: 100%;
+            max-width: 440px;
+            padding: 40px 35px;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-auth-card">
+        <div class="text-center mb-4">
+            <div class="d-inline-flex align-items-center justify-content-center mb-2">
+                <img src="{% static 'images/bms_icon.svg' %}" alt="BMS Logo" style="height: 56px; width: 56px;" class="rounded-3 shadow-lg">
+            </div>
+            <h3 class="fw-bold text-white mb-1">Super Admin Portal</h3>
+            <p class="text-slate-400 small" style="color: #94a3b8;">ISBMS Business Management System</p>
+        </div>
+
+        {% if error %}
+        <div class="alert alert-danger py-2 small fw-bold mb-3" role="alert">
+            <i class="bi bi-shield-exclamation me-1"></i>{{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="{% url 'admin_login' %}">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label text-slate-300 small fw-bold">Admin Username</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-dark border-secondary text-primary"><i class="bi bi-person-fill"></i></span>
+                    <input type="text" name="username" class="form-control form-control-lg bg-dark text-white border-secondary" placeholder="Admin" required autofocus>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label text-slate-300 small fw-bold">Master Password</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-dark border-secondary text-primary"><i class="bi bi-key-fill"></i></span>
+                    <input type="password" name="password" class="form-control form-control-lg bg-dark text-white border-secondary" placeholder="Admin@123" required>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-lg w-100 fw-bold py-3 mt-3 shadow-lg">
+                <i class="bi bi-shield-check me-2"></i>Access Admin Master Control
+            </button>
+        </form>
+
+        <div class="text-center mt-4 pt-3 border-top border-secondary">
+            <a href="{% url 'login' %}" class="text-slate-400 small text-decoration-none" style="color: #94a3b8;">
+                <i class="bi bi-arrow-left me-1"></i>Switch to Shopkeeper Login
+            </a>
+        </div>
+    </div>
+</body>
+</html>

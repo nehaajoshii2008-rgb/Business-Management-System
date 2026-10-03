@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+
+{% block title %}Super Admin Portal | ISBMS Business Management System{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+    <!-- Header Card -->
+    <div class="col-12">
+        <div class="card card-custom p-4 bg-dark text-white border-start border-4 border-primary">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h3 class="fw-bold mb-1 text-white"><i class="bi bi-shield-lock-fill text-primary me-2"></i>Super Admin Master Dashboard</h3>
+                    <p class="text-white-50 mb-0">Overview of all registered shopkeeper stores, merchant KYC verifications, and system-wide sales analytics.</p>
+                </div>
+                <div class="text-end">
+                    <span class="badge bg-primary fs-6 py-2 px-3"><i class="bi bi-person-check-fill me-1"></i>Logged in as Super Admin</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Metrics Overview -->
+    <div class="col-md-3">
+        <div class="card card-custom p-3 border-start border-4 border-success">
+            <span class="text-muted small uppercase fw-bold">Total Active Stores</span>
+            <h2 class="fw-bold text-success mb-0">{{ total_stores }}</h2>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-custom p-3 border-start border-4 border-info">
+            <span class="text-muted small uppercase fw-bold">System-wide Revenue</span>
+            <h2 class="fw-bold text-info mb-0">₹{{ total_system_revenue|floatformat:2 }}</h2>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-custom p-3 border-start border-4 border-warning">
+            <span class="text-muted small uppercase fw-bold">Total Invoices Generated</span>
+            <h2 class="fw-bold text-warning mb-0">{{ total_system_invoices }}</h2>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-custom p-3 border-start border-4 border-primary">
+            <span class="text-muted small uppercase fw-bold">Total Products Listed</span>
+            <h2 class="fw-bold text-primary mb-0">{{ total_system_products }}</h2>
+        </div>
+    </div>
+
+    <!-- Registered Shopkeeper Stores Table -->
+    <div class="col-12">
+        <div class="card card-custom p-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold text-dark mb-0"><i class="bi bi-shop me-2"></i>Registered Shopkeeper Accounts & KYC Verifications</h5>
+                <form method="GET" action="{% url 'admin_dashboard' %}" class="d-flex gap-2">
+                    <input type="text" name="q" class="form-control form-control-sm" placeholder="Search Store, Phone or PAN..." value="{{ query }}">
+                    <button type="submit" class="btn btn-sm btn-dark">Search</button>
+                </form>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Store Name</th>
+                            <th>Shopkeeper Mobile</th>
+                            <th>PAN Card Number</th>
+                            <th>Aadhaar Number</th>
+                            <th>KYC Status</th>
+                            <th>Products</th>
+                            <th>Invoices</th>
+                            <th>Total Revenue (₹)</th>
+                            <th class="text-end">KYC Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if stores_data %}
+                            {% for item in stores_data %}
+                            <tr>
+                                <td class="fw-bold text-dark">{{ item.store.name }}</td>
+                                <td><i class="bi bi-telephone me-1 text-muted"></i>{{ item.store.phone }}</td>
+                                <td><code class="text-uppercase fw-bold">{{ item.store.pan_number|default:"N/A" }}</code></td>
+                                <td><code>{{ item.store.aadhaar_number|default:"N/A" }}</code></td>
+                                <td>
+                                    {% if item.store.kyc_status == 'VERIFIED' %}
+                                        <span class="badge bg-success"><i class="bi bi-shield-check me-1"></i>Verified</span>
+                                    {% elif item.store.kyc_status == 'PENDING' %}
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-clock me-1"></i>Pending</span>
+                                    {% else %}
+                                        <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Rejected</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ item.product_count }}</td>
+                                <td>{{ item.invoice_count }}</td>
+                                <td class="fw-bold text-success">₹{{ item.revenue|floatformat:2 }}</td>
+                                <td class="text-end">
+                                    <form method="POST" action="{% url 'api_admin_verify_kyc' item.store.id %}" class="d-inline">
+                                        {% csrf_token %}
+                                        {% if item.store.kyc_status == 'VERIFIED' %}
+                                            <input type="hidden" name="status" value="REJECTED">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">Suspend KYC</button>
+                                        {% else %}
+                                            <input type="hidden" name="status" value="VERIFIED">
+                                            <button type="submit" class="btn btn-sm btn-success">Approve KYC</button>
+                                        {% endif %}
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="9" class="text-center py-4 text-muted">
+                                    No registered shopkeeper store accounts found.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

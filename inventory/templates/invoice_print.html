@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice #{{ invoice.invoice_number }} - {{ store.name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #fff;
+            color: #000;
+            font-family: Arial, sans-serif;
+        }
+        .invoice-card {
+            max-width: 800px;
+            margin: 20px auto;
+            border: 1px solid #ccc;
+            padding: 30px;
+            border-radius: 8px;
+        }
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            .invoice-card {
+                border: none;
+                padding: 0;
+                margin: 0;
+                width: 100%;
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print text-center my-3">
+        <button onclick="window.print()" class="btn btn-primary btn-lg fw-bold me-2">Print Invoice</button>
+        <a href="{% url 'pos' %}" class="btn btn-secondary btn-lg">Back to POS</a>
+    </div>
+
+    <div class="invoice-card">
+        <div class="row mb-4">
+            <div class="col-6">
+                <h3 class="fw-bold text-success">{{ store.name }}</h3>
+                <p class="mb-0">{{ store.address }}</p>
+                <p class="mb-0">Phone: {{ store.phone }}</p>
+                {% if store.gstin %}<p class="mb-0">GSTIN: {{ store.gstin }}</p>{% endif %}
+            </div>
+            <div class="col-6 text-end">
+                <h4 class="fw-bold text-dark">TAX INVOICE</h4>
+                <p class="mb-0">Invoice No: <strong>#{{ invoice.invoice_number }}</strong></p>
+                <p class="mb-0">Date: {{ invoice.created_at|date:"d M Y h:i A" }}</p>
+                <p class="mb-0">Payment Mode: <span class="badge bg-secondary">{{ invoice.get_payment_mode_display }}</span></p>
+            </div>
+        </div>
+
+        <hr>
+
+        <div class="row mb-4">
+            <div class="col-6">
+                <h6 class="fw-bold text-muted">Billed To:</h6>
+                {% if invoice.customer %}
+                    <p class="mb-0 fw-bold fs-5">{{ invoice.customer.name }}</p>
+                    <p class="mb-0">Phone: {{ invoice.customer.phone }}</p>
+                {% else %}
+                    <p class="mb-0 fw-bold">Walk-in Customer</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <table class="table table-bordered align-middle mb-4">
+            <thead class="table-light">
+                <tr>
+                    <th>#</th>
+                    <th>Product Description</th>
+                    <th>Batch No</th>
+                    <th>HSN</th>
+                    <th>Qty</th>
+                    <th>Unit Price (₹)</th>
+                    <th>GST %</th>
+                    <th class="text-end">Total Amount (₹)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in invoice.items.all %}
+                <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td class="fw-bold">{{ item.product.name }}</td>
+                    <td>{{ item.batch.batch_number|default:"DEFAULT" }}</td>
+                    <td>{{ item.product.hsn_code }}</td>
+                    <td>{{ item.quantity }} {{ item.product.unit }}</td>
+                    <td>₹{{ item.unit_price|floatformat:2 }}</td>
+                    <td>{{ item.gst_rate }}%</td>
+                    <td class="text-end fw-bold">₹{{ item.total_amount|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="row">
+            <div class="col-6">
+                <p class="text-muted small">
+                    * Terms: Goods once sold will not be taken back without original bill.<br>
+                    * Bank / UPI ID: <strong>{{ store.upi_id }}</strong>
+                </p>
+            </div>
+            <div class="col-6">
+                <div class="border p-3 rounded bg-light">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Subtotal:</span><span>₹{{ invoice.subtotal|floatformat:2 }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>GST Tax Amount:</span><span>₹{{ invoice.tax_amount|floatformat:2 }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Discount:</span><span>-₹{{ invoice.discount_amount|floatformat:2 }}</span>
+                    </div>
+                    <hr class="my-2">
+                    <div class="d-flex justify-content-between fw-bold fs-5 text-success">
+                        <span>Grand Total:</span><span>₹{{ invoice.grand_total|floatformat:2 }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center mt-5">
+            <p class="fw-bold mb-0">Thank you for your business!</p>
+            <small class="text-muted">This is a computer-generated tax invoice.</small>
+        </div>
+    </div>
+</body>
+</html>

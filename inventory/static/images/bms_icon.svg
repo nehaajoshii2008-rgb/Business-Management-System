@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bms-icon-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="50%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+    <linearGradient id="bms-icon-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#60a5fa" />
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="100" height="100" rx="24" fill="url(#bms-icon-grad)" />
+  <path d="M 28 32 L 50 20 L 72 32 L 72 65 C 72 78 50 86 50 86 C 50 86 28 78 28 65 Z" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linejoin="round"/>
+  <path d="M 40 60 L 47 67 L 62 48" fill="none" stroke="url(#bms-icon-glow)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="50" cy="35" r="4" fill="#ffffff"/>
+  <circle cx="38" cy="48" r="3.5" fill="#34d399"/>
+  <circle cx="62" cy="48" r="3.5" fill="#60a5fa"/>
+  <line x1="50" y1="35" x2="38" y2="48" stroke="#ffffff" stroke-width="2" opacity="0.7"/>
+  <line x1="50" y1="35" x2="62" y2="48" stroke="#ffffff" stroke-width="2" opacity="0.7"/>
+</svg>

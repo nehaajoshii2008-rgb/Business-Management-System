@@ -1,0 +1,377 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>{% block title %}ISBMS - Business Management System{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="{% static 'images/bms_icon.svg' %}">
+    <link rel="apple-touch-icon" href="{% static 'images/bms_icon.svg' %}">
+    <link rel="manifest" href="{% static 'manifest.json' %}">
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        :root {
+            --bs-body-bg: #f1f5f9;
+            --bs-body-color: #0f172a;
+            --saas-primary: #0f172a;
+            --saas-accent: #10b981;
+        }
+        body {
+            background-color: var(--bs-body-bg);
+            color: var(--bs-body-color);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+        .navbar-saas {
+            background-color: #0f172a !important;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        .card-custom {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+            background-color: #ffffff;
+        }
+        .shortcut-badge {
+            font-size: 0.75rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background-color: rgba(255,255,255,0.2);
+            margin-left: 4px;
+        }
+        .digital-clock {
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-weight: 700;
+            color: #38bdf8;
+            letter-spacing: 1px;
+            background-color: rgba(15, 23, 42, 0.6);
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 1px solid #334155;
+        }
+        /* Thermal Receipt Styling for 58mm/80mm Printers */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #thermal-receipt, #thermal-receipt * {
+                visibility: visible;
+            }
+            #thermal-receipt {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 58mm;
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 11px;
+                line-height: 1.2;
+                padding: 2mm;
+                margin: 0;
+                background: white;
+                color: black;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Enterprise SaaS Top Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark navbar-saas sticky-top no-print">
+        <div class="container-fluid px-3">
+            <!-- Business Management System Brand Logo -->
+            <a class="navbar-brand d-flex align-items-center gap-2 fw-bold text-white fs-5" href="{% url 'landing' %}">
+                <img src="{% static 'images/bms_icon.svg' %}" alt="BMS Logo" style="height: 38px; width: 38px;" class="rounded-3 shadow-sm">
+                <div>
+                    <span class="d-flex align-items-center gap-1">
+                        ISBMS <span class="badge bg-success text-white px-2 py-0 fs-6" style="font-size: 0.7rem !important; vertical-align: middle;">BMS</span>
+                    </span>
+                    <small class="d-block text-success" style="font-size: 0.68rem; line-height: 1;">Business Management System</small>
+                </div>
+            </a>
+
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarPosContent">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarPosContent">
+                <!-- Main Nav Links -->
+                <ul class="navbar-nav me-auto ms-lg-3">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.resolver_match.url_name == 'pos' %}active fw-bold text-success{% endif %}" href="{% url 'pos' %}">
+                            <i class="bi bi-calculator me-1"></i><span data-i18n="nav_pos">POS Terminal</span> <span class="shortcut-badge">F2</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.resolver_match.url_name == 'inventory_list' %}active fw-bold text-info{% endif %}" href="{% url 'inventory_list' %}">
+                            <i class="bi bi-box-seam me-1"></i><span data-i18n="nav_inventory">Stock Inventory & Excel Upload</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.resolver_match.url_name == 'khata_dashboard' %}active fw-bold text-warning{% endif %}" href="{% url 'khata_dashboard' %}">
+                            <i class="bi bi-journal-bookmark me-1"></i><span data-i18n="nav_khata">Digital Khata (Udhaari)</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.resolver_match.url_name == 'analytics_dashboard' %}active fw-bold text-info{% endif %}" href="{% url 'analytics_dashboard' %}">
+                            <i class="bi bi-graph-up-arrow me-1"></i><span data-i18n="nav_analytics">Capital Analytics</span>
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- Right Side Tools: Language Switcher, AI Tutorial Button, Live Clock, Sync Badge -->
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <!-- AI Video Tutorial Button -->
+                    <button class="btn btn-warning btn-sm fw-bold d-flex align-items-center gap-1 shadow-sm px-3" data-bs-toggle="modal" data-bs-target="#aiTutorialModal" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #ffffff; border: none;">
+                        <i class="bi bi-play-circle-fill fs-6 text-white"></i>
+                        <span data-i18n="nav_ai_tutorial">How to Use (AI Video)</span>
+                        <span class="badge bg-danger text-white rounded-pill ms-1" style="font-size: 0.65rem;">AI</span>
+                    </button>
+
+                    <!-- Language Switcher Dropdown -->
+                    <div class="dropdown">
+                        <button class="btn btn-outline-light btn-sm dropdown-toggle fw-bold d-flex align-items-center gap-1 border-secondary" type="button" id="languageDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-translate text-warning"></i>
+                            <span id="current-lang-label">Language</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 mt-1" aria-labelledby="languageDropdown">
+                            <li>
+                                <button class="dropdown-item lang-select-btn fw-bold d-flex align-items-center justify-content-between py-2" onclick="setLanguage('en')">
+                                    <span><i class="bi bi-globe me-2"></i>English</span>
+                                    <small class="badge bg-secondary">en</small>
+                                </button>
+                            </li>
+                            <li>
+                                <button class="dropdown-item lang-select-btn fw-bold d-flex align-items-center justify-content-between py-2 text-primary" onclick="setLanguage('hi')">
+                                    <span>🇮🇳 हिंदी (Hindi)</span>
+                                    <small class="badge bg-primary">hi</small>
+                                </button>
+                            </li>
+                            <li>
+                                <button class="dropdown-item lang-select-btn fw-bold d-flex align-items-center justify-content-between py-2 text-success" onclick="setLanguage('mr')">
+                                    <span>🇮🇳 मराठी (Marathi)</span>
+                                    <small class="badge bg-success">mr</small>
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Live Digital Clock -->
+                    <div class="digital-clock small d-none d-xl-block" id="live-clock">
+                        00:00:00 IST
+                    </div>
+
+                    <!-- Offline Sync Status Badge -->
+                    <span id="sync-status-badge" class="badge bg-success py-2 px-2">
+                        <i class="bi bi-wifi me-1"></i> <span data-i18n="nav_online">ONLINE</span>
+                    </span>
+
+                    <!-- Super Admin Dashboard Link -->
+                    {% if user.is_superuser or user.username.lower == 'admin' %}
+                    <a href="{% url 'admin_dashboard' %}" class="btn btn-primary btn-sm fw-bold">
+                        <i class="bi bi-shield-lock-fill me-1"></i><span data-i18n="nav_admin">Admin Portal</span>
+                    </a>
+                    {% endif %}
+
+                    <!-- Cashier / Store Profile Dropdown -->
+                    {% if user.is_authenticated %}
+                    <div class="dropdown">
+                        <button class="btn btn-outline-light btn-sm dropdown-toggle d-flex align-items-center gap-2 border-secondary" type="button" id="cashierDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 26px; height: 26px; font-size: 0.8rem;">
+                                <i class="bi bi-person-fill"></i>
+                            </div>
+                            <span class="small fw-bold">{{ user.first_name|default:user.username }}</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 mt-2" aria-labelledby="cashierDropdown">
+                            <li class="dropdown-header text-uppercase small" data-i18n="nav_store_header">Logged-in Store</li>
+                            <li><a class="dropdown-item fw-bold" href="#"><i class="bi bi-shop me-2"></i>{{ store.name }}</a></li>
+                            <li><a class="dropdown-item small text-muted" href="#"><i class="bi bi-qr-code me-2"></i>UPI: <strong>{{ store.upi_id }}</strong></a></li>
+                            {% if store.pan_number %}
+                            <li><a class="dropdown-item small text-muted" href="#"><i class="bi bi-card-heading me-2"></i>PAN: {{ store.pan_number }}</a></li>
+                            {% endif %}
+                            <li><hr class="dropdown-divider"></li>
+                            {% if not user.is_superuser %}
+                            <li><a class="dropdown-item text-danger small" href="{% url 'delete_account' %}"><i class="bi bi-trash me-2"></i>Delete Store Account</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            {% endif %}
+                            <li><a class="dropdown-item text-danger fw-bold" href="{% url 'logout' %}"><i class="bi bi-box-arrow-right me-2"></i><span data-i18n="nav_logout">Logout Store</span></a></li>
+                        </ul>
+                    </div>
+                    {% else %}
+                    <div class="d-flex gap-2">
+                        <a href="{% url 'login' %}" class="btn btn-outline-light btn-sm fw-bold">Login</a>
+                        <a href="{% url 'register' %}" class="btn btn-success btn-sm fw-bold">Register Store</a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Page Container -->
+    <div class="container-fluid py-3 px-3">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- AI Video Tutorial & Guided Assistant Modal -->
+    <div class="modal fade no-print" id="aiTutorialModal" tabindex="-1" aria-labelledby="aiTutorialModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content bg-dark text-white border-secondary shadow-lg">
+                <div class="modal-header border-secondary bg-gradient d-flex justify-content-between align-items-center" style="background-color: #0f172a;">
+                    <div>
+                        <h5 class="modal-title fw-bold text-warning d-flex align-items-center gap-2" id="aiTutorialModalLabel">
+                            <i class="bi bi-play-btn-fill fs-4 text-warning"></i>
+                            <span data-i18n="tutorial_title">🎥 How to Use ISBMS - AI Video Tutorial Guide</span>
+                        </h5>
+                        <p class="text-muted small mb-0 ms-1" data-i18n="tutorial_subtitle">Learn how to manage billing, inventory, digital khata, and analytics in 1 minute.</p>
+                    </div>
+
+                    <!-- AI Video Language Selector Toolbar -->
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="d-none d-md-flex align-items-center gap-1 me-2 bg-dark bg-opacity-75 p-1 px-2 rounded-3 border border-secondary">
+                            <span class="small text-warning fw-bold me-1"><i class="bi bi-translate me-1"></i>Video Language:</span>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-light modal-lang-pill fw-bold px-2" data-lang="en" onclick="changeTutorialLang('en')">🇬🇧 English</button>
+                                <button type="button" class="btn btn-outline-light modal-lang-pill fw-bold px-2" data-lang="hi" onclick="changeTutorialLang('hi')">🇮🇳 हिंदी</button>
+                                <button type="button" class="btn btn-outline-light modal-lang-pill fw-bold px-2" data-lang="mr" onclick="changeTutorialLang('mr')">🇮🇳 मराठी</button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" onclick="stopVoiceNarration()"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-4">
+                    <!-- Video Progress Scrubber Bar -->
+                    <div class="progress mb-3 bg-secondary bg-opacity-50" style="height: 6px;">
+                        <div id="video-progress-bar" class="progress-bar bg-warning progress-bar-striped progress-bar-animated" role="progressbar" style="width: 20%;"></div>
+                    </div>
+
+                    <!-- Single Visual Demo Player Screen Frame -->
+                    <div class="card bg-black border-secondary p-3 text-center position-relative shadow mb-3" style="min-height: 310px; background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span id="tutorial-visual-badge" class="badge bg-primary text-white px-3 py-2 fw-bold fs-6">
+                                PHASE 1: SECURE LOGIN
+                            </span>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-success"><i class="bi bi-play-circle-fill me-1"></i> FULL VIDEO PLAYING</span>
+                            </div>
+                        </div>
+
+                        <h4 id="tutorial-visual-title" class="fw-bold text-warning mb-3">🎥 ISBMS Business Management System - Complete Software Video Guide</h4>
+
+                        <!-- Live Dynamic Working Software Screen Container -->
+                        <div id="tutorial-demo-frame" class="my-auto"></div>
+                    </div>
+
+                    <!-- Subtitle / Live AI Voice Transcript Box -->
+                    <div id="tutorial-transcript" class="p-3 bg-secondary bg-opacity-25 border border-secondary rounded-3 text-warning small font-monospace">
+                        <strong><i class="bi bi-soundwave text-warning me-1"></i> AI Voice Transcript:</strong> "Welcome to ISBMS Business Management System!"
+                    </div>
+                </div>
+
+                <!-- Modal Footer with Media Controls & In-Video Language Pills -->
+                <div class="modal-footer border-secondary justify-content-between bg-dark flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <!-- Language selector for mobile & footer -->
+                        <div class="d-flex align-items-center gap-1 me-2 bg-black bg-opacity-50 p-1 px-2 rounded-3 border border-secondary">
+                            <span class="small text-warning fw-bold me-1"><i class="bi bi-translate"></i></span>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-light modal-lang-pill fw-bold" data-lang="en" onclick="changeTutorialLang('en')">English</button>
+                                <button type="button" class="btn btn-outline-light modal-lang-pill fw-bold" data-lang="hi" onclick="changeTutorialLang('hi')">हिंदी</button>
+                                <button type="button" class="btn btn-outline-light modal-lang-pill fw-bold" data-lang="mr" onclick="changeTutorialLang('mr')">मराठी</button>
+                            </div>
+                        </div>
+
+                        <button id="tutorial-voice-toggle" class="btn btn-outline-warning btn-sm fw-bold" onclick="toggleVoiceMute()">
+                            <i class="bi bi-volume-up-fill me-1"></i> <span data-i18n="tutorial_voice_on">Voice Narration: ON</span>
+                        </button>
+
+                        <button id="tutorial-play-btn" class="btn btn-success btn-sm fw-bold" onclick="togglePlayPause()">
+                            <i class="bi bi-play-fill me-1"></i> <span data-i18n="tutorial_btn_play">Play Voice Guide</span>
+                        </button>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-2">
+                        <button id="tutorial-prev-btn" class="btn btn-outline-light btn-sm fw-bold" onclick="prevStep()" disabled>
+                            <i class="bi bi-chevron-left me-1"></i> <span data-i18n="tutorial_btn_prev">Previous Step</span>
+                        </button>
+                        <button id="tutorial-next-btn" class="btn btn-warning btn-sm fw-bold" onclick="nextStep()">
+                            <span data-i18n="tutorial_btn_next">Next Step</span> <i class="bi bi-chevron-right ms-1"></i>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm fw-bold" data-bs-dismiss="modal" onclick="stopVoiceNarration()" data-i18n="btn_close">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3 no-print" style="z-index: 1090;">
+        <div id="app-toast" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body" id="toast-message">
+                    Action completed successfully.
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    {% load static %}
+    <script src="{% static 'js/i18n.js' %}"></script>
+    <script src="{% static 'js/ai_tutorial.js' %}"></script>
+    <script src="{% static 'js/offline_sync.js' %}"></script>
+    
+    <script>
+        // Live Digital Clock Update
+        function updateClock() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-IN', { hour12: false });
+            const clockEl = document.getElementById('live-clock');
+            if (clockEl) {
+                clockEl.innerText = `${timeStr} IST`;
+            }
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Global Toast Notification Helper
+        function showToast(message, type = 'success') {
+            const toastEl = document.getElementById('app-toast');
+            const toastMsg = document.getElementById('toast-message');
+            toastMsg.innerText = message;
+            
+            toastEl.className = 'toast align-items-center text-white border-0';
+            if (type === 'danger' || type === 'error') {
+                toastEl.classList.add('bg-danger');
+            } else if (type === 'warning') {
+                toastEl.classList.add('bg-warning', 'text-dark');
+            } else if (type === 'info') {
+                toastEl.classList.add('bg-info', 'text-dark');
+            } else {
+                toastEl.classList.add('bg-success');
+            }
+            
+            const bsToast = new bootstrap.Toast(toastEl, { delay: 3000 });
+            bsToast.show();
+        }
+        // PWA Service Worker Registration for Mobile App Installability
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js')
+                    .then((reg) => console.log('[ISBMS Mobile PWA] Service worker registered:', reg.scope))
+                    .catch((err) => console.warn('[ISBMS Mobile PWA] Service worker registration failed:', err));
+            });
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,399 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ISBMS - Business Management System | Billing, Inventory & Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="{% static 'images/bms_icon.svg' %}">
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        :root {
+            --bs-primary: #0f172a;
+            --accent-green: #10b981;
+            --accent-blue: #3b82f6;
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        .hero-section {
+            background: radial-gradient(circle at top right, rgba(59, 130, 246, 0.15), transparent 50%),
+                        radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.15), transparent 50%);
+            padding: 100px 0 80px 0;
+        }
+        .pricing-banner {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            border-radius: 16px;
+            padding: 35px;
+            box-shadow: 0 10px 30px rgba(16, 185, 129, 0.25);
+        }
+        .feature-card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 30px;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+            border-color: #10b981;
+        }
+        .icon-wrapper {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.75rem;
+            margin-bottom: 20px;
+        }
+        .badge-free {
+            background-color: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+            border: 1px solid #10b981;
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .btn-launch {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border: none;
+            color: white;
+            font-weight: 700;
+            padding: 14px 36px;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);
+            transition: all 0.2s ease;
+        }
+        .btn-launch:hover {
+            transform: scale(1.03);
+            color: white;
+            box-shadow: 0 6px 25px rgba(16, 185, 129, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <!-- SaaS Header Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark fixed-top" style="background-color: rgba(15, 23, 42, 0.9); backdrop-filter: blur(10px); border-bottom: 1px solid #334155;">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center gap-2 fw-bold text-white fs-4" href="{% url 'landing' %}">
+                <img src="{% static 'images/bms_icon.svg' %}" alt="BMS Logo" style="height: 42px; width: 42px;" class="rounded-3 shadow-sm">
+                <span class="d-flex align-items-center gap-1">
+                    ISBMS <span class="badge bg-success text-white fs-6 px-2 py-1" style="font-size: 0.75rem !important;">BMS</span>
+                </span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarContent">
+                <ul class="navbar-nav me-auto ms-4">
+                    <li class="nav-item"><a class="nav-link text-slate-300" href="#features">Features</a></li>
+                    <li class="nav-item"><a class="nav-link text-slate-300" href="#pricing">Pricing</a></li>
+                    <li class="nav-item"><a class="nav-link text-slate-300" href="#usps">Offline Queue</a></li>
+                </ul>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <!-- Language Selector Dropdown -->
+                    <div class="dropdown me-1">
+                        <button class="btn btn-outline-light btn-sm dropdown-toggle fw-bold d-flex align-items-center gap-1 border-secondary" type="button" id="landingLangDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-translate text-warning"></i>
+                            <span id="current-lang-label">Language</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 mt-1" aria-labelledby="landingLangDropdown">
+                            <li>
+                                <button class="dropdown-item lang-select-btn fw-bold d-flex align-items-center justify-content-between py-2" onclick="setLanguage('en')">
+                                    <span><i class="bi bi-globe me-2"></i>English</span>
+                                    <small class="badge bg-secondary">en</small>
+                                </button>
+                            </li>
+                            <li>
+                                <button class="dropdown-item lang-select-btn fw-bold d-flex align-items-center justify-content-between py-2 text-primary" onclick="setLanguage('hi')">
+                                    <span>🇮🇳 हिंदी (Hindi)</span>
+                                    <small class="badge bg-primary">hi</small>
+                                </button>
+                            </li>
+                            <li>
+                                <button class="dropdown-item lang-select-btn fw-bold d-flex align-items-center justify-content-between py-2 text-success" onclick="setLanguage('mr')">
+                                    <span>🇮🇳 मराठी (Marathi)</span>
+                                    <small class="badge bg-success">mr</small>
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- AI Video Tutorial Launch Button -->
+                    <button class="btn btn-warning btn-sm fw-bold d-flex align-items-center gap-1 shadow-sm px-3" data-bs-toggle="modal" data-bs-target="#aiTutorialModal" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #ffffff; border: none;">
+                        <i class="bi bi-play-circle-fill fs-6 text-white"></i>
+                        <span data-i18n="nav_ai_tutorial">How to Use (AI Video)</span>
+                        <span class="badge bg-danger text-white rounded-pill ms-1" style="font-size: 0.65rem;">AI</span>
+                    </button>
+
+                    <a href="{% url 'pos' %}" class="btn btn-success fw-bold px-3 py-2 rounded-3">
+                        <i class="bi bi-lightning-charge-fill me-1"></i>Launch POS
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero-section text-center">
+        <div class="container">
+            <div class="mb-3">
+                <span class="badge-free text-uppercase tracking-wider">
+                    <i class="bi bi-stars me-1"></i>Next-Gen Business Management System
+                </span>
+            </div>
+            <h1 class="display-3 fw-bold text-white mb-3" style="max-width: 900px; margin: 0 auto; line-height: 1.15;">
+                Intelligent Enterprise Business Management System
+            </h1>
+            <p class="lead text-slate-400 mb-5" style="max-width: 700px; margin: 0 auto; color: #94a3b8;">
+                All-in-one POS billing, multi-store ERP, stock inventory control, and digital Khata ledger built for modern retail, wholesale, and service enterprises.
+            </p>
+            <div class="d-flex justify-content-center gap-3 flex-wrap">
+                <a href="{% url 'pos' %}" class="btn btn-launch">
+                    <i class="bi bi-play-circle-fill me-2"></i>Launch POS Terminal <span class="small opacity-75">(Press F2)</span>
+                </a>
+                <button class="btn btn-warning btn-lg fw-bold px-4 rounded-3 shadow" data-bs-toggle="modal" data-bs-target="#aiTutorialModal">
+                    <i class="bi bi-play-btn-fill me-2"></i><span data-i18n="nav_ai_tutorial">How to Use (AI Video)</span>
+                </button>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="row g-4 mt-5 pt-4 text-center justify-content-center">
+                <div class="col-md-3 col-6">
+                    <h2 class="fw-bold text-success mb-1">0ms</h2>
+                    <p class="text-slate-400 small mb-0" style="color: #94a3b8;">Offline Checkout Delay</p>
+                </div>
+                <div class="col-md-3 col-6">
+                    <h2 class="fw-bold text-primary mb-1">1-Click</h2>
+                    <p class="text-slate-400 small mb-0" style="color: #94a3b8;">WhatsApp Payment Link</p>
+                </div>
+                <div class="col-md-3 col-6">
+                    <h2 class="fw-bold text-warning mb-1">100%</h2>
+                    <p class="text-slate-400 small mb-0" style="color: #94a3b8;">FIFO Expiry Risk Alert</p>
+                </div>
+                <div class="col-md-3 col-6">
+                    <h2 class="fw-bold text-info mb-1">₹0</h2>
+                    <p class="text-slate-400 small mb-0" style="color: #94a3b8;">Free Cloud Tier Ready</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Banner Section -->
+    <section class="container my-5" id="pricing">
+        <div class="pricing-banner text-white d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <div>
+                <span class="badge bg-white text-dark fw-bold mb-2">LIMITED TIME PROMO</span>
+                <h2 class="fw-bold mb-1">100% Free Forever for Local Vendors</h2>
+                <p class="mb-0 text-white-50">Designed specifically for Kirana, General Stores, and Medical Pharmacies. Deployable on Render.com & PythonAnywhere.</p>
+            </div>
+            <div>
+                <a href="{% url 'pos' %}" class="btn btn-dark btn-lg fw-bold px-4 rounded-3 shadow">
+                    Start Billing Now <i class="bi bi-arrow-right ms-1"></i>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Feature Grid Section -->
+    <section class="container my-5 py-4" id="features">
+        <div class="text-center mb-5">
+            <h2 class="fw-bold text-white display-5 mb-2">Built for Real-World Indian Retail</h2>
+            <p class="text-slate-400" style="color: #94a3b8;">Everything you need to run a high-volume shop with zero technical downtime.</p>
+        </div>
+
+        <div class="row g-4" id="usps">
+            <!-- USP 1 -->
+            <div class="col-md-4">
+                <div class="feature-card h-100">
+                    <div class="icon-wrapper bg-success bg-opacity-20 text-success">
+                        <i class="bi bi-wifi-off"></i>
+                    </div>
+                    <h4 class="fw-bold text-white mb-2">Offline-Resilient Local Queue</h4>
+                    <p style="color: #94a3b8;" class="small mb-0">
+                        IndexedDB browser queueing ensures checkout never stops even when free cloud tiers go idle or shop Wi-Fi drops. Auto-syncs seamlessly when online.
+                    </p>
+                </div>
+            </div>
+            <!-- USP 2 -->
+            <div class="col-md-4">
+                <div class="feature-card h-100">
+                    <div class="icon-wrapper bg-warning bg-opacity-20 text-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                    </div>
+                    <h4 class="fw-bold text-white mb-2">Capital-Risk & Expiry Analyzer</h4>
+                    <p style="color: #94a3b8;" class="small mb-0">
+                        Automated inventory engine flags products with zero sales in 30/60 days ("Capital Blocked") and enforces FIFO clearing for batches nearing expiry.
+                    </p>
+                </div>
+            </div>
+            <!-- USP 3 -->
+            <div class="col-md-4">
+                <div class="feature-card h-100">
+                    <div class="icon-wrapper bg-info bg-opacity-20 text-info">
+                        <i class="bi bi-whatsapp"></i>
+                    </div>
+                    <h4 class="fw-bold text-white mb-2">Digital Khata & WhatsApp UPI</h4>
+                    <p style="color: #94a3b8;" class="small mb-0">
+                        Track customer debt balances with a 1-click button generating pre-filled WhatsApp reminders with balance & dynamic UPI payment links.
+                    </p>
+                </div>
+            </div>
+            <!-- POS Shortcuts -->
+            <div class="col-md-4">
+                <div class="feature-card h-100">
+                    <div class="icon-wrapper bg-primary bg-opacity-20 text-primary">
+                        <i class="bi bi-keyboard"></i>
+                    </div>
+                    <h4 class="fw-bold text-white mb-2">Keyboard-Driven Billing</h4>
+                    <p style="color: #94a3b8;" class="small mb-0">
+                        Full hotkey navigation (F2: Search/Barcode, F4: Switch Payment Mode, F8: Complete & Print) for rapid cashier operations.
+                    </p>
+                </div>
+            </div>
+            <!-- Dynamic UPI QR -->
+            <div class="col-md-4">
+                <div class="feature-card h-100">
+                    <div class="icon-wrapper bg-purple bg-opacity-20 text-info">
+                        <i class="bi bi-qr-code-scan"></i>
+                    </div>
+                    <h4 class="fw-bold text-white mb-2">Dynamic On-Screen UPI QR</h4>
+                    <p style="color: #94a3b8;" class="small mb-0">
+                        Generates exact total bill amount QR codes dynamically on screen for GPay, PhonePe, Paytm, and BHIM scanning.
+                    </p>
+                </div>
+            </div>
+            <!-- Thermal Printing -->
+            <div class="col-md-4">
+                <div class="feature-card h-100">
+                    <div class="icon-wrapper bg-danger bg-opacity-20 text-danger">
+                        <i class="bi bi-printer"></i>
+                    </div>
+                    <h4 class="fw-bold text-white mb-2">Thermal Receipt & GST Invoicing</h4>
+                    <p style="color: #94a3b8;" class="small mb-0">
+                        Native 58mm & 80mm thermal printer support alongside standard A4 GST tax invoice views.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="border-top py-4 text-center mt-5" style="border-color: #334155 !important;">
+        <div class="container">
+            <p class="mb-1 text-slate-400" style="color: #94a3b8;">
+                &copy; 2026 <strong>ISBMS - Business Management System</strong>. Multi-Store Enterprise ERP & POS.
+            </p>
+            <small class="text-slate-500" style="color: #64748b;">
+                Production Ready Deployment on Render.com & PythonAnywhere.
+            </small>
+        </div>
+    </footer>
+
+    <!-- AI Video Tutorial & Guided Assistant Modal -->
+    <div class="modal fade no-print" id="aiTutorialModal" tabindex="-1" aria-labelledby="aiTutorialModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content bg-dark text-white border-secondary shadow-lg">
+                <div class="modal-header border-secondary bg-gradient d-flex justify-content-between align-items-center" style="background-color: #0f172a;">
+                    <div>
+                        <h5 class="modal-title fw-bold text-warning d-flex align-items-center gap-2" id="aiTutorialModalLabel">
+                            <i class="bi bi-play-btn-fill fs-4 text-warning"></i>
+                            <span data-i18n="tutorial_title">🎥 How to Use ISBMS - AI Video Tutorial Guide</span>
+                        </h5>
+                        <p class="text-muted small mb-0 ms-1" data-i18n="tutorial_subtitle">Learn how to manage billing, inventory, digital khata, and analytics in 1 minute.</p>
+                    </div>
+
+                    <!-- AI Video Language Selector Toolbar -->
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="d-none d-md-flex align-items-center gap-1 me-2 bg-dark bg-opacity-75 p-1 px-2 rounded-3 border border-secondary">
+                            <span class="small text-warning fw-bold me-1"><i class="bi bi-translate me-1"></i>Video Language:</span>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-light modal-lang-pill fw-bold px-2" data-lang="en" onclick="changeTutorialLang('en')">🇬🇧 English</button>
+                                <button type="button" class="btn btn-outline-light modal-lang-pill fw-bold px-2" data-lang="hi" onclick="changeTutorialLang('hi')">🇮🇳 हिंदी</button>
+                                <button type="button" class="btn btn-outline-light modal-lang-pill fw-bold px-2" data-lang="mr" onclick="changeTutorialLang('mr')">🇮🇳 मराठी</button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" onclick="stopVoiceNarration()"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-4">
+                    <!-- Video Progress Scrubber Bar -->
+                    <div class="progress mb-3 bg-secondary bg-opacity-50" style="height: 6px;">
+                        <div id="video-progress-bar" class="progress-bar bg-warning progress-bar-striped progress-bar-animated" role="progressbar" style="width: 20%;"></div>
+                    </div>
+
+                    <!-- Single Visual Demo Player Screen Frame -->
+                    <div class="card bg-black border-secondary p-3 text-center position-relative shadow mb-3" style="min-height: 310px; background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span id="tutorial-visual-badge" class="badge bg-primary text-white px-3 py-2 fw-bold fs-6">
+                                PHASE 1: SECURE LOGIN
+                            </span>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-success"><i class="bi bi-play-circle-fill me-1"></i> FULL VIDEO PLAYING</span>
+                            </div>
+                        </div>
+
+                        <h4 id="tutorial-visual-title" class="fw-bold text-warning mb-3">🎥 ISBMS Business Management System - Complete Software Video Guide</h4>
+
+                        <!-- Live Dynamic Working Software Screen Container -->
+                        <div id="tutorial-demo-frame" class="my-auto"></div>
+                    </div>
+
+                    <!-- Subtitle / Live AI Voice Transcript Box -->
+                    <div id="tutorial-transcript" class="p-3 bg-secondary bg-opacity-25 border border-secondary rounded-3 text-warning small font-monospace">
+                        <strong><i class="bi bi-soundwave text-warning me-1"></i> AI Voice Transcript:</strong> "Welcome to ISBMS Business Management System!"
+                    </div>
+                </div>
+
+                <!-- Modal Footer with Media Controls & In-Video Language Pills -->
+                <div class="modal-footer border-secondary justify-content-between bg-dark flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <!-- Language selector for mobile & footer -->
+                        <div class="d-flex align-items-center gap-1 me-2 bg-black bg-opacity-50 p-1 px-2 rounded-3 border border-secondary">
+                            <span class="small text-warning fw-bold me-1"><i class="bi bi-translate"></i></span>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-light modal-lang-pill fw-bold" data-lang="en" onclick="changeTutorialLang('en')">English</button>
+                                <button type="button" class="btn btn-outline-light modal-lang-pill fw-bold" data-lang="hi" onclick="changeTutorialLang('hi')">हिंदी</button>
+                                <button type="button" class="btn btn-outline-light modal-lang-pill fw-bold" data-lang="mr" onclick="changeTutorialLang('mr')">मराठी</button>
+                            </div>
+                        </div>
+
+                        <button id="tutorial-voice-toggle" class="btn btn-outline-warning btn-sm fw-bold" onclick="toggleVoiceMute()">
+                            <i class="bi bi-volume-up-fill me-1"></i> <span data-i18n="tutorial_voice_on">Voice Narration: ON</span>
+                        </button>
+
+                        <button id="tutorial-play-btn" class="btn btn-success btn-sm fw-bold" onclick="togglePlayPause()">
+                            <i class="bi bi-play-fill me-1"></i> <span data-i18n="tutorial_btn_play">Play Voice Guide</span>
+                        </button>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-2">
+                        <button id="tutorial-prev-btn" class="btn btn-outline-light btn-sm fw-bold" onclick="prevStep()" disabled>
+                            <i class="bi bi-chevron-left me-1"></i> <span data-i18n="tutorial_btn_prev">Previous Step</span>
+                        </button>
+                        <button id="tutorial-next-btn" class="btn btn-warning btn-sm fw-bold" onclick="nextStep()">
+                            <span data-i18n="tutorial_btn_next">Next Step</span> <i class="bi bi-chevron-right ms-1"></i>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm fw-bold" data-bs-dismiss="modal" onclick="stopVoiceNarration()" data-i18n="btn_close">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    {% load static %}
+    <script src="{% static 'js/i18n.js' %}"></script>
+    <script src="{% static 'js/ai_tutorial.js' %}"></script>
+</body>
+</html>

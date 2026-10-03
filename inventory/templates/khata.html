@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+
+{% block title %}Digital Khata Ledger | ISBMS Business Management System{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+    <!-- Header Summary Card -->
+    <div class="col-12">
+        <div class="card card-custom p-4 bg-white border-start border-4 border-warning">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h3 class="fw-bold mb-1"><i class="bi bi-journal-bookmark-fill text-warning me-2"></i><span data-i18n="khata_title">Digital Khata (Udhaari) Ledger</span></h3>
+                    <p class="text-muted mb-0" data-i18n="khata_subtitle">Track customer pending balances and collect payments faster via 1-Click WhatsApp payment reminders.</p>
+                </div>
+                <div class="text-end">
+                    <span class="text-muted d-block small uppercase fw-bold" data-i18n="khata_total_outstanding">Total Store Udhaar Outstanding</span>
+                    <h2 class="fw-bold text-danger mb-0">₹{{ total_pending_udhaar|floatformat:2 }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search & Customer List -->
+    <div class="col-12">
+        <div class="card card-custom p-3">
+            <form method="GET" action="{% url 'khata_dashboard' %}" class="row g-2 mb-3">
+                <div class="col-md-10">
+                    <input type="text" name="q" class="form-control form-control-lg" placeholder="Search customer by Name or Phone Number..." data-i18n-placeholder="khata_search_placeholder" value="{{ query }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-warning btn-lg w-100 fw-bold">
+                        <i class="bi bi-search me-1"></i><span data-i18n="btn_search">Search</span>
+                    </button>
+                </div>
+            </form>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th data-i18n="khata_col_cust_name">Customer Name</th>
+                            <th data-i18n="khata_col_phone">Phone Number</th>
+                            <th data-i18n="khata_col_balance">Pending Udhaar (₹)</th>
+                            <th data-i18n="khata_col_whatsapp">1-Click WhatsApp Reminder</th>
+                            <th class="text-end" data-i18n="khata_col_action">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if customers_data %}
+                            {% for item in customers_data %}
+                            <tr>
+                                <td class="fw-bold text-dark fs-5">{{ item.customer.name }}</td>
+                                <td><i class="bi bi-telephone me-1 text-muted"></i>{{ item.customer.phone }}</td>
+                                <td>
+                                    <span class="badge bg-danger fs-6 px-3 py-2">
+                                        ₹{{ item.customer.khata_balance|floatformat:2 }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="{{ item.whatsapp_url }}" target="_blank" class="btn btn-success fw-bold">
+                                        <i class="bi bi-whatsapp me-1"></i>Send WhatsApp UPI Payment Link
+                                    </a>
+                                </td>
+                                <td class="text-end">
+                                    <button class="btn btn-outline-primary fw-bold" onclick="openSettleModal({{ item.customer.id }}, '{{ item.customer.name }}', {{ item.customer.khata_balance }})">
+                                        <i class="bi bi-cash-coin me-1"></i>Receive Payment
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center py-5 text-muted">
+                                    <i class="bi bi-check-circle-fill fs-1 text-success d-block mb-2"></i>
+                                    No pending customer Udhaar found! All customer accounts are settled.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Khata Payment Settlement Modal -->
+<div class="modal fade" id="settleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content p-4">
+            <h4 class="fw-bold text-success mb-3"><i class="bi bi-cash-coin me-2"></i>Receive Khata Settlement</h4>
+            
+            <input type="hidden" id="settle-cust-id">
+            <div class="mb-3">
+                <label class="form-label text-muted">Customer Name</label>
+                <input type="text" id="settle-cust-name" class="form-control fw-bold" readonly>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label text-muted">Current Outstanding Balance</label>
+                <input type="text" id="settle-cust-balance" class="form-control text-danger fw-bold fs-5" readonly>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Payment Amount Received (₹)</label>
+                <input type="number" id="settle-amount" class="form-control form-control-lg fw-bold" placeholder="Enter amount received" step="0.01">
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-bold">Payment Mode</label>
+                <select id="settle-mode" class="form-select">
+                    <option value="CASH">Cash Payment</option>
+                    <option value="UPI">UPI / GPay / PhonePe</option>
+                    <option value="CARD">Debit / Credit Card</option>
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label text-muted">Notes / Transaction Reference</label>
+                <input type="text" id="settle-notes" class="form-control" placeholder="e.g. UTR Number or Cash handed over">
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-secondary w-50" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success w-50 fw-bold" onclick="submitSettlement()">
+                    Record Settlement
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function openSettleModal(custId, custName, balance) {
+        document.getElementById('settle-cust-id').value = custId;
+        document.getElementById('settle-cust-name').value = custName;
+        document.getElementById('settle-cust-balance').value = `₹${balance.toFixed(2)}`;
+        document.getElementById('settle-amount').value = balance.toFixed(2);
+        
+        const modal = new bootstrap.Modal(document.getElementById('settleModal'));
+        modal.show();
+    }
+
+    async function submitSettlement() {
+        const custId = document.getElementById('settle-cust-id').value;
+        const amount = parseFloat(document.getElementById('settle-amount').value);
+        const mode = document.getElementById('settle-mode').value;
+        const notes = document.getElementById('settle-notes').value;
+
+        if (isNaN(amount) || amount <= 0) {
+            showToast('Please enter a valid positive payment amount', 'warning');
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/khata/settle/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    customer_id: custId,
+                    amount: amount,
+                    payment_mode: mode,
+                    notes: notes
+                })
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                showToast(data.message, 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast(data.error || 'Failed to record settlement', 'danger');
+            }
+        } catch (err) {
+            console.error('Settlement error:', err);
+            showToast('Network error while processing settlement', 'danger');
+        }
+    }
+</script>
+{% endblock %}

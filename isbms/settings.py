@@ -63,9 +63,10 @@ WSGI_APPLICATION = 'isbms.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/stable/ref/settings/#databases
+db_path = "/tmp/db.sqlite3" if (os.environ.get('VERCEL') or os.environ.get('NOW_REGION')) else str(BASE_DIR / 'db.sqlite3')
 DATABASES = {
     'default': dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        default=f"sqlite:///{db_path}",
         conn_max_age=600,
         conn_health_checks=True,
     )

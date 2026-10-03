@@ -2,23 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "isbms/wsgi.py",
-      "use": "@vercel/python",
-      "config": { "maxLambdaSize": "15mb", "runtime": "python3.11" }
-    },
-    {
-      "src": "inventory/static/**",
-      "use": "@vercel/static"
+      "src": "api/index.py",
+      "use": "@vercel/python"
     }
   ],
   "routes": [
     {
-      "src": "/static/(.*)",
-      "dest": "/inventory/static/$1"
-    },
-    {
-      "src": "(.*)",
-      "dest": "isbms/wsgi.py"
+      "src": "/(.*)",
+      "dest": "api/index.py"
     }
   ]
 }

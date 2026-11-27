@@ -27,6 +27,8 @@ class StoreProfile(models.Model):
     email = models.EmailField(blank=True, default="contact@retail.local")
     gstin = models.CharField(max_length=15, blank=True, null=True, help_text="GST Identification Number")
     upi_id = models.CharField(max_length=100, default="store@upi", help_text="Store VPA for dynamic QR billing (GPay/Paytm/PhonePe)")
+    razorpay_key_id = models.CharField(max_length=120, blank=True, default='', help_text="Razorpay Key ID for automatic UPI QR detection")
+    razorpay_key_secret = models.CharField(max_length=120, blank=True, default='', help_text="Razorpay Key Secret for automatic UPI QR detection")
     pan_number = models.CharField(max_length=10, blank=True, null=True, help_text="PAN Card Number for Merchant KYC")
     aadhaar_number = models.CharField(max_length=12, blank=True, null=True, help_text="12-digit Aadhaar Card Number")
     kyc_status = models.CharField(max_length=20, choices=[('VERIFIED', 'KYC Verified'), ('PENDING', 'Verification Pending'), ('REJECTED', 'Rejected')], default='VERIFIED')
@@ -257,6 +259,32 @@ class KhataLedger(models.Model):
 
     def __str__(self):
         return f"{self.customer.name} - {self.entry_type}: ₹{self.amount} at {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class UpiPaymentSession(models.Model):
+    """Tracks dynamic Razorpay UPI QR sessions for automatic payment detection."""
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending Payment'),
+        ('PAID', 'Paid'),
+        ('EXPIRED', 'Expired / Closed'),
+    ]
+
+    store = models.ForeignKey(StoreProfile, on_delete=models.CASCADE, related_name='upi_sessions')
+    qr_id = models.CharField(max_length=100, unique=True, db_index=True)
+    client_invoice_id = models.CharField(max_length=100, blank=True, default='', db_index=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    razorpay_payment_id = models.CharField(max_length=100, blank=True, default='')
+    customer_vpa = models.CharField(max_length=120, blank=True, default='')
+    image_url = models.URLField(max_length=500, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"QR {self.qr_id} - ₹{self.amount} ({self.status})"
 
     class Meta:
         ordering = ['-created_at']

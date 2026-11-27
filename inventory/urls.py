@@ -35,6 +35,10 @@ urlpatterns = [
     path('api/products/search/', views.api_product_search, name='api_product_search'),
     path('api/pos/checkout/', views.api_create_invoice, name='api_create_invoice'),
     path('api/pos/upi-qr/', views.api_generate_upi_qr, name='api_generate_upi_qr'),
+    path('api/pos/upi-qr/create/', views.api_create_upi_qr_session, name='api_create_upi_qr_session'),
+    path('api/pos/upi-qr/status/', views.api_check_upi_qr_status, name='api_check_upi_qr_status'),
+    path('api/pos/razorpay-webhook/', views.api_razorpay_webhook, name='api_razorpay_webhook'),
+    path('api/store/payment-settings/', views.api_save_payment_settings, name='api_save_payment_settings'),
 
     # Digital Khata (Udhaari Ledger)
     path('khata/', views.khata_dashboard, name='khata_dashboard'),

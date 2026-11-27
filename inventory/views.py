@@ -3,7 +3,13 @@ import uuid
 import io
 import csv
 import re
+import os
+import hmac
+import hashlib
+import base64
 import urllib.parse
+import urllib.request
+import urllib.error
 from decimal import Decimal, InvalidOperation
 from datetime import timedelta, date, datetime
 
@@ -21,7 +27,7 @@ from django.views.decorators.csrf import csrf_exempt
 import qrcode
 import openpyxl
 
-from .models import StoreProfile, Category, Product, Batch, Customer, Invoice, InvoiceItem, KhataLedger
+from .models import StoreProfile, Category, Product, Batch, Customer, Invoice, InvoiceItem, KhataLedger, UpiPaymentSession
 
 
 # ==========================================
@@ -324,10 +330,13 @@ def pos_view(request):
     """Render POS Billing interface for logged-in shopkeeper."""
     store = get_user_store(request)
     categories = Category.objects.filter(store=store)
+    key_id, key_secret = _get_razorpay_credentials(store)
     context = {
         'store': store,
         'categories': categories,
         'payment_modes': Invoice.PAYMENT_MODES,
+        'has_razorpay': bool(key_id and key_secret),
+        'razorpay_key_id': key_id,
     }
     return render(request, 'pos.html', context)
 
@@ -549,6 +558,253 @@ def api_create_invoice(request):
         return JsonResponse({'error': str(ve)}, status=400)
     except Exception as e:
         return JsonResponse({'error': f'Transaction failed: {str(e)}'}, status=500)
+
+
+def _get_razorpay_credentials(store):
+    """Return (key_id, key_secret) from store profile or environment variables."""
+    key_id = (getattr(store, 'razorpay_key_id', '') or '').strip() or os.environ.get('RAZORPAY_KEY_ID', '').strip()
+    key_secret = (getattr(store, 'razorpay_key_secret', '') or '').strip() or os.environ.get('RAZORPAY_KEY_SECRET', '').strip()
+    return key_id, key_secret
+
+
+def _razorpay_request(method, path, key_id, key_secret, payload=None):
+    """Perform an authenticated HTTP request to Razorpay REST API using stdlib."""
+    url = f"https://api.razorpay.com{path}"
+    auth_token = base64.b64encode(f"{key_id}:{key_secret}".encode('utf-8')).decode('ascii')
+    headers = {
+        'Authorization': f'Basic {auth_token}',
+        'Content-Type': 'application/json',
+        'User-Agent': 'VyaparSetu-POS/1.0',
+    }
+    data = json.dumps(payload).encode('utf-8') if payload is not None else None
+    req = urllib.request.Request(url, data=data, headers=headers, method=method.upper())
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            return resp.status, json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as err:
+        raw_body = err.read().decode('utf-8', errors='replace')
+        try:
+            err_json = json.loads(raw_body)
+        except Exception:
+            err_json = {'error': {'description': raw_body or str(err)}}
+        return err.code, err_json
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_save_payment_settings(request):
+    """Save store UPI ID and Razorpay API credentials for automatic QR detection."""
+    store = get_user_store(request)
+    try:
+        data = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload'}, status=400)
+
+    upi_id = data.get('upi_id', '').strip()
+    razorpay_key_id = data.get('razorpay_key_id', '').strip()
+    razorpay_key_secret = data.get('razorpay_key_secret', '').strip()
+    clear_razorpay = bool(data.get('clear_razorpay', False))
+
+    if upi_id:
+        store.upi_id = upi_id
+
+    if clear_razorpay:
+        store.razorpay_key_id = ''
+        store.razorpay_key_secret = ''
+    else:
+        if razorpay_key_id:
+            store.razorpay_key_id = razorpay_key_id
+        if razorpay_key_secret:
+            store.razorpay_key_secret = razorpay_key_secret
+
+    store.save()
+    key_id, key_secret = _get_razorpay_credentials(store)
+    return JsonResponse({
+        'success': True,
+        'has_razorpay': bool(key_id and key_secret),
+        'razorpay_key_id': key_id,
+        'upi_id': store.upi_id,
+        'message': 'Payment settings saved!'
+    })
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_create_upi_qr_session(request):
+    """
+    Create a dynamic Razorpay UPI QR session if credentials are configured,
+    or return fallback static-VPA QR URL for manual confirmation.
+    """
+    store = get_user_store(request)
+    try:
+        data = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON payload'}, status=400)
+
+    amount = _parse_decimal(data.get('amount'), '0.00')
+    if amount <= Decimal('0.00'):
+        return JsonResponse({'error': 'Amount must be greater than 0'}, status=400)
+
+    client_invoice_id = str(data.get('client_invoice_id') or uuid.uuid4())
+    key_id, key_secret = _get_razorpay_credentials(store)
+
+    if not (key_id and key_secret):
+        return JsonResponse({
+            'success': True,
+            'mode': 'manual_upi',
+            'qr_id': None,
+            'image_url': f"/api/pos/upi-qr/?amount={amount:.2f}&t={int(timezone.now().timestamp() * 1000)}",
+            'amount': float(amount),
+            'client_invoice_id': client_invoice_id,
+        })
+
+    amount_paise = int((amount * Decimal('100')).quantize(Decimal('1')))
+    close_by = int(timezone.now().timestamp()) + 900  # 15 minutes
+    payload = {
+        'type': 'upi_qr',
+        'name': (store.name or 'VyaparSetu Store')[:80],
+        'usage': 'single_use',
+        'fixed_amount': True,
+        'payment_amount': amount_paise,
+        'description': f"Bill payment for {(store.name or 'Store')[:60]}",
+        'close_by': close_by,
+        'notes': {
+            'store_id': str(store.id),
+            'client_invoice_id': client_invoice_id,
+        }
+    }
+
+    try:
+        status_code, resp_data = _razorpay_request('POST', '/v1/payments/qr_codes', key_id, key_secret, payload)
+    except Exception as exc:
+        return JsonResponse({'error': f'Could not reach Razorpay API: {str(exc)}'}, status=502)
+
+    if status_code not in (200, 201) or not resp_data.get('id'):
+        err_msg = (resp_data.get('error') or {}).get('description') or 'Razorpay rejected QR creation. Check your Key ID & Secret.'
+        return JsonResponse({'error': err_msg}, status=400)
+
+    qr_id = resp_data['id']
+    image_url = resp_data.get('image_url') or ''
+    UpiPaymentSession.objects.create(
+        store=store,
+        qr_id=qr_id,
+        client_invoice_id=client_invoice_id,
+        amount=amount,
+        status='PENDING',
+        image_url=image_url,
+    )
+
+    return JsonResponse({
+        'success': True,
+        'mode': 'razorpay',
+        'qr_id': qr_id,
+        'image_url': image_url,
+        'amount': float(amount),
+        'client_invoice_id': client_invoice_id,
+    })
+
+
+@login_required
+def api_check_upi_qr_status(request):
+    """Poll payment status for an active Razorpay UPI QR session."""
+    store = get_user_store(request)
+    qr_id = request.GET.get('qr_id', '').strip()
+    if not qr_id:
+        return JsonResponse({'error': 'qr_id is required'}, status=400)
+
+    session = UpiPaymentSession.objects.filter(store=store, qr_id=qr_id).first()
+    if not session:
+        return JsonResponse({'error': 'QR session not found'}, status=404)
+
+    if session.status == 'PAID':
+        return JsonResponse({
+            'paid': True,
+            'status': 'PAID',
+            'payment_id': session.razorpay_payment_id,
+            'vpa': session.customer_vpa,
+        })
+
+    key_id, key_secret = _get_razorpay_credentials(store)
+    if not (key_id and key_secret):
+        return JsonResponse({'paid': False, 'status': session.status})
+
+    try:
+        status_code, resp_data = _razorpay_request('GET', f'/v1/payments/qr_codes/{qr_id}/payments', key_id, key_secret)
+        if status_code == 200:
+            for payment in resp_data.get('items', []):
+                if payment.get('status') in ('captured', 'authorized'):
+                    session.status = 'PAID'
+                    session.razorpay_payment_id = payment.get('id', '')
+                    session.customer_vpa = payment.get('vpa', '') or ''
+                    session.paid_at = timezone.now()
+                    session.save(update_fields=['status', 'razorpay_payment_id', 'customer_vpa', 'paid_at'])
+                    return JsonResponse({
+                        'paid': True,
+                        'status': 'PAID',
+                        'payment_id': session.razorpay_payment_id,
+                        'vpa': session.customer_vpa,
+                    })
+
+        # Fallback check on QR code object itself
+        qr_code_status, qr_obj = _razorpay_request('GET', f'/v1/payments/qr_codes/{qr_id}', key_id, key_secret)
+        if qr_code_status == 200:
+            expected_paise = int((session.amount * Decimal('100')).quantize(Decimal('1')))
+            received_paise = int(qr_obj.get('payments_amount_received') or 0)
+            if qr_obj.get('status') == 'closed' and received_paise >= expected_paise:
+                session.status = 'PAID'
+                session.paid_at = timezone.now()
+                session.save(update_fields=['status', 'paid_at'])
+                return JsonResponse({
+                    'paid': True,
+                    'status': 'PAID',
+                    'payment_id': session.razorpay_payment_id,
+                    'vpa': session.customer_vpa,
+                })
+            if qr_obj.get('status') == 'closed' and received_paise == 0:
+                session.status = 'EXPIRED'
+                session.save(update_fields=['status'])
+                return JsonResponse({'paid': False, 'status': 'EXPIRED'})
+    except Exception:
+        # Keep polling silently on transient network hiccups
+        pass
+
+    return JsonResponse({'paid': False, 'status': session.status})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_razorpay_webhook(request):
+    """Optional Razorpay webhook endpoint for instant qr_code.credited / payment.captured updates."""
+    webhook_secret = os.environ.get('RAZORPAY_WEBHOOK_SECRET', '').strip()
+    if webhook_secret:
+        signature = request.headers.get('X-Razorpay-Signature', '')
+        expected_sig = hmac.new(webhook_secret.encode('utf-8'), request.body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected_sig):
+            return JsonResponse({'error': 'Invalid webhook signature'}, status=400)
+
+    try:
+        event = json.loads(request.body.decode('utf-8') or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    event_name = event.get('event', '')
+    payload = event.get('payload', {})
+    if event_name in ('qr_code.credited', 'payment.captured'):
+        qr_entity = (payload.get('qr_code') or {}).get('entity') or {}
+        payment_entity = (payload.get('payment') or {}).get('entity') or {}
+        qr_id = qr_entity.get('id') or payment_entity.get('qr_code_id')
+        if qr_id:
+            session = UpiPaymentSession.objects.filter(qr_id=qr_id).first()
+            if session and session.status != 'PAID':
+                session.status = 'PAID'
+                session.razorpay_payment_id = payment_entity.get('id', '') or session.razorpay_payment_id
+                session.customer_vpa = payment_entity.get('vpa', '') or session.customer_vpa
+                session.paid_at = timezone.now()
+                session.save(update_fields=['status', 'razorpay_payment_id', 'customer_vpa', 'paid_at'])
+
+    return JsonResponse({'status': 'ok'})
 
 
 def api_generate_upi_qr(request):

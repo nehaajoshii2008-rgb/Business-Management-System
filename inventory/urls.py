@@ -16,6 +16,8 @@ urlpatterns = [
     # Super Admin Dashboard & KYC Approval
     path('admin-dashboard/', views.admin_dashboard, name='admin_dashboard'),
     path('api/admin/verify-kyc/<int:store_id>/', views.api_admin_verify_kyc, name='api_admin_verify_kyc'),
+    path('api/admin/delete-user/<int:user_id>/', views.api_admin_delete_user, name='api_admin_delete_user'),
+    path('api/admin/delete-all-users/', views.api_admin_delete_all_users, name='api_admin_delete_all_users'),
 
     # POS Billing Terminal
     path('pos/', views.pos_view, name='pos'),

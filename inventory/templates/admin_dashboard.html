@@ -4,18 +4,34 @@
 
 {% block content %}
 <div class="row g-3">
+    {% if messages %}
+    <div class="col-12">
+        {% for message in messages %}
+        <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %} alert-dismissible fade show shadow-sm mb-0" role="alert">
+            <i class="bi bi-{% if message.tags == 'error' %}exclamation-triangle-fill{% else %}check-circle-fill{% endif %} me-2"></i>{{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <!-- Header Card -->
     <div class="col-12">
         <div class="card card-custom p-4 bg-dark text-white border-start border-4 border-primary">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div>
                     <h3 class="fw-bold mb-1 text-white"><i class="bi bi-shield-lock-fill text-primary me-2"></i>Super Admin Master Dashboard</h3>
-                    <p class="text-white-50 mb-0">Overview of all registered shopkeeper stores, merchant KYC verifications, and system-wide sales analytics.</p>
+                    <p class="text-white-50 mb-0">Overview of all registered shopkeeper users, login activity, merchant KYC verifications, and system-wide sales analytics.</p>
                 </div>
                 <div class="text-end d-flex align-items-center gap-2 flex-wrap">
                     <a href="/admin/auth/user/" target="_blank" class="btn btn-outline-light btn-sm fw-bold">
                         <i class="bi bi-people-fill me-1"></i>Django Users Admin
                     </a>
+                    {% if total_stores > 0 %}
+                    <button type="button" class="btn btn-danger btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#deleteAllUsersModal">
+                        <i class="bi bi-trash3-fill me-1"></i>Remove All Users
+                    </button>
+                    {% endif %}
                     <span class="badge bg-primary fs-6 py-2 px-3"><i class="bi bi-person-check-fill me-1"></i>Logged in as Super Admin</span>
                 </div>
             </div>
@@ -80,44 +96,83 @@
                             {% for item in stores_data %}
                             <tr>
                                 <td class="fw-bold text-dark">
-                                    {{ item.store.name }}
-                                    <small class="d-block text-muted fw-normal">UPI: {{ item.store.upi_id }}</small>
+                                    {% if item.store %}
+                                        {{ item.store.name }}
+                                        <small class="d-block text-muted fw-normal">{{ item.store.get_store_type_display }}</small>
+                                        <small class="d-block text-muted fw-normal">UPI: {{ item.store.upi_id }}</small>
+                                    {% else %}
+                                        <span class="text-muted">No Store Created Yet</span>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     {% if item.owner %}
                                         <div class="fw-bold text-primary"><i class="bi bi-person-badge me-1"></i><code>{{ item.owner.username }}</code></div>
                                         <small class="d-block text-muted">Last Login: {{ item.owner.last_login|date:"d M Y, h:i A"|default:"Never" }}</small>
-                                        <small class="d-block text-muted">Joined: {{ item.owner.date_joined|date:"d M Y" }}</small>
+                                        <small class="d-block text-muted">Joined: {{ item.owner.date_joined|date:"d M Y, h:i A" }}</small>
                                     {% else %}
                                         <span class="badge bg-secondary">No Linked User</span>
                                     {% endif %}
                                 </td>
-                                <td><i class="bi bi-telephone me-1 text-muted"></i>{{ item.store.phone }}</td>
+                                <td><i class="bi bi-telephone me-1 text-muted"></i>{{ item.store.phone|default:"N/A" }}</td>
                                 <td><code class="text-uppercase fw-bold">{{ item.store.pan_number|default:"N/A" }}</code></td>
                                 <td><code>{{ item.store.aadhaar_number|default:"N/A" }}</code></td>
                                 <td>
-                                    {% if item.store.kyc_status == 'VERIFIED' %}
-                                        <span class="badge bg-success"><i class="bi bi-shield-check me-1"></i>Verified</span>
-                                    {% elif item.store.kyc_status == 'PENDING' %}
-                                        <span class="badge bg-warning text-dark"><i class="bi bi-clock me-1"></i>Pending</span>
+                                    {% if item.store %}
+                                        {% if item.store.kyc_status == 'VERIFIED' %}
+                                            <span class="badge bg-success"><i class="bi bi-shield-check me-1"></i>Verified</span>
+                                        {% elif item.store.kyc_status == 'PENDING' %}
+                                            <span class="badge bg-warning text-dark"><i class="bi bi-clock me-1"></i>Pending</span>
+                                        {% else %}
+                                            <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Rejected</span>
+                                        {% endif %}
                                     {% else %}
-                                        <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Rejected</span>
+                                        <span class="badge bg-secondary">N/A</span>
                                     {% endif %}
                                 </td>
                                 <td>{{ item.product_count }}</td>
                                 <td>{{ item.invoice_count }}</td>
                                 <td class="fw-bold text-success">₹{{ item.revenue|floatformat:2 }}</td>
-                                <td class="text-end">
-                                    <form method="POST" action="{% url 'api_admin_verify_kyc' item.store.id %}" class="d-inline">
+                                <td class="text-end text-nowrap">
+                                    <button type="button" class="btn btn-sm btn-outline-primary me-1"
+                                        data-username="{{ item.owner.username|default:'N/A' }}"
+                                        data-email="{{ item.owner.email|default:item.store.email|default:'N/A' }}"
+                                        data-last-login="{{ item.owner.last_login|date:'d M Y, h:i A'|default:'Never' }}"
+                                        data-joined="{{ item.owner.date_joined|date:'d M Y, h:i A'|default:'N/A' }}"
+                                        data-active="{% if item.owner.is_active %}Active{% else %}Inactive{% endif %}"
+                                        data-store-name="{{ item.store.name|default:'N/A' }}"
+                                        data-store-type="{% if item.store %}{{ item.store.get_store_type_display }}{% else %}N/A{% endif %}"
+                                        data-phone="{{ item.store.phone|default:'N/A' }}"
+                                        data-address="{{ item.store.address|default:'N/A' }}"
+                                        data-upi="{{ item.store.upi_id|default:'N/A' }}"
+                                        data-gstin="{{ item.store.gstin|default:'N/A' }}"
+                                        data-pan="{{ item.store.pan_number|default:'N/A' }}"
+                                        data-aadhaar="{{ item.store.aadhaar_number|default:'N/A' }}"
+                                        data-kyc="{{ item.store.kyc_status|default:'N/A' }}"
+                                        data-razorpay="{% if item.store.razorpay_key_id %}Connected{% else %}Manual UPI{% endif %}"
+                                        data-products="{{ item.product_count }}"
+                                        data-invoices="{{ item.invoice_count }}"
+                                        data-revenue="₹{{ item.revenue|floatformat:2 }}"
+                                        onclick="showUserDetailsModal(this)">
+                                        <i class="bi bi-eye me-1"></i>Details
+                                    </button>
+                                    {% if item.store %}
+                                    <form method="POST" action="{% url 'api_admin_verify_kyc' item.store.id %}" class="d-inline me-1">
                                         {% csrf_token %}
                                         {% if item.store.kyc_status == 'VERIFIED' %}
                                             <input type="hidden" name="status" value="REJECTED">
-                                            <button type="submit" class="btn btn-sm btn-outline-danger">Suspend KYC</button>
+                                            <button type="submit" class="btn btn-sm btn-outline-warning text-dark">Suspend</button>
                                         {% else %}
                                             <input type="hidden" name="status" value="VERIFIED">
-                                            <button type="submit" class="btn btn-sm btn-success">Approve KYC</button>
+                                            <button type="submit" class="btn btn-sm btn-success">Approve</button>
                                         {% endif %}
                                     </form>
+                                    {% endif %}
+                                    {% if item.owner %}
+                                    <form method="POST" action="{% url 'api_admin_delete_user' item.owner.id %}" class="d-inline" onsubmit="return confirm('Remove user {{ item.owner.username|escapejs }} and all their store data?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                    </form>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
@@ -134,4 +189,109 @@
         </div>
     </div>
 </div>
+
+<!-- Full User & Store Details Modal -->
+<div class="modal fade" id="userDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content p-4 border-0 shadow-lg">
+            <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
+                <h4 class="fw-bold text-primary mb-0"><i class="bi bi-person-lines-fill me-2"></i>User &amp; Store Full Details</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="row g-3 small">
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded border h-100">
+                        <h6 class="fw-bold text-dark mb-2">Login &amp; Account Info</h6>
+                        <div><strong>Username:</strong> <code id="det-username"></code></div>
+                        <div><strong>Status:</strong> <span id="det-active"></span></div>
+                        <div><strong>Email:</strong> <span id="det-email"></span></div>
+                        <div><strong>Last Login:</strong> <span id="det-last-login"></span></div>
+                        <div><strong>Registered / Joined:</strong> <span id="det-joined"></span></div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded border h-100">
+                        <h6 class="fw-bold text-dark mb-2">Store &amp; Payment Info</h6>
+                        <div><strong>Store Name:</strong> <span id="det-store-name"></span></div>
+                        <div><strong>Store Type:</strong> <span id="det-store-type"></span></div>
+                        <div><strong>Phone:</strong> <span id="det-phone"></span></div>
+                        <div><strong>UPI ID:</strong> <code id="det-upi"></code></div>
+                        <div><strong>QR Auto-Detect:</strong> <span id="det-razorpay"></span></div>
+                        <div><strong>Address:</strong> <span id="det-address"></span></div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded border h-100">
+                        <h6 class="fw-bold text-dark mb-2">KYC &amp; Tax Info</h6>
+                        <div><strong>PAN Number:</strong> <code id="det-pan"></code></div>
+                        <div><strong>Aadhaar Number:</strong> <code id="det-aadhaar"></code></div>
+                        <div><strong>GSTIN:</strong> <code id="det-gstin"></code></div>
+                        <div><strong>KYC Status:</strong> <span id="det-kyc"></span></div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded border h-100">
+                        <h6 class="fw-bold text-dark mb-2">Activity Summary</h6>
+                        <div><strong>Total Products:</strong> <span id="det-products"></span></div>
+                        <div><strong>Total Invoices:</strong> <span id="det-invoices"></span></div>
+                        <div><strong>Paid Revenue:</strong> <strong class="text-success" id="det-revenue"></strong></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete All Users Confirmation Modal -->
+<div class="modal fade" id="deleteAllUsersModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content p-4 text-center border-0 shadow-lg">
+            <div class="mb-2 text-danger">
+                <i class="bi bi-exclamation-octagon-fill" style="font-size: 3rem;"></i>
+            </div>
+            <h4 class="fw-bold text-danger mb-2">Remove All Shopkeeper Users?</h4>
+            <p class="text-muted mb-3">
+                This will delete all <strong>{{ total_stores }}</strong> non-admin user account(s) and their stores, stock, and invoices. Super Admin (<code>Admin</code>) will remain intact, and any future registration/login will show up here with full details.
+            </p>
+            <form method="POST" action="{% url 'api_admin_delete_all_users' %}">
+                {% csrf_token %}
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-secondary w-50 fw-bold" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger w-50 fw-bold">
+                        <i class="bi bi-trash3-fill me-1"></i>Yes, Remove All
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function showUserDetailsModal(btn) {
+        const d = btn.dataset;
+        document.getElementById('det-username').innerText = d.username || 'N/A';
+        document.getElementById('det-active').innerText = d.active || 'N/A';
+        document.getElementById('det-email').innerText = d.email || 'N/A';
+        document.getElementById('det-last-login').innerText = d.lastLogin || 'Never';
+        document.getElementById('det-joined').innerText = d.joined || 'N/A';
+        document.getElementById('det-store-name').innerText = d.storeName || 'N/A';
+        document.getElementById('det-store-type').innerText = d.storeType || 'N/A';
+        document.getElementById('det-phone').innerText = d.phone || 'N/A';
+        document.getElementById('det-upi').innerText = d.upi || 'N/A';
+        document.getElementById('det-razorpay').innerText = d.razorpay || 'Manual UPI';
+        document.getElementById('det-address').innerText = d.address || 'N/A';
+        document.getElementById('det-pan').innerText = d.pan || 'N/A';
+        document.getElementById('det-aadhaar').innerText = d.aadhaar || 'N/A';
+        document.getElementById('det-gstin').innerText = d.gstin || 'N/A';
+        document.getElementById('det-kyc').innerText = d.kyc || 'N/A';
+        document.getElementById('det-products').innerText = d.products || '0';
+        document.getElementById('det-invoices').innerText = d.invoices || '0';
+        document.getElementById('det-revenue').innerText = d.revenue || '₹0.00';
+
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('userDetailsModal'));
+        modal.show();
+    }
+</script>
 {% endblock %}

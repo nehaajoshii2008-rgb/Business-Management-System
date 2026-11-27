@@ -189,6 +189,7 @@ def login_view(request):
             login(request, user)
             if user.is_superuser or user.is_staff or user.username.lower() == 'admin':
                 return redirect('admin_dashboard')
+            get_user_store(request)
             return redirect('pos')
         else:
             return render(request, 'login.html', {'error': 'Invalid Shopkeeper Username or Password.'})
@@ -263,17 +264,19 @@ def delete_account_view(request):
 def admin_dashboard(request):
     """
     Super Admin Master Dashboard.
-    Overview of all shopkeeper stores across all industries (Perfumes, Clothing, Kirana, Electronics, Medical).
+    Overview of all registered shopkeeper users, stores, login activity, KYC details, and sales analytics.
     """
     query = request.GET.get('q', '').strip()
 
-    stores_qs = StoreProfile.objects.exclude(owner__username__iexact='admin').select_related('owner')
+    users_qs = User.objects.filter(is_superuser=False).exclude(username__iexact='admin').select_related('store').order_by('-last_login', '-date_joined')
     if query:
-        stores_qs = stores_qs.filter(
-            Q(name__icontains=query)
-            | Q(phone__icontains=query)
-            | Q(pan_number__icontains=query)
-            | Q(owner__username__icontains=query)
+        users_qs = users_qs.filter(
+            Q(username__icontains=query)
+            | Q(email__icontains=query)
+            | Q(first_name__icontains=query)
+            | Q(store__name__icontains=query)
+            | Q(store__phone__icontains=query)
+            | Q(store__pan_number__icontains=query)
         )
 
     stores_data = []
@@ -281,10 +284,16 @@ def admin_dashboard(request):
     total_system_invoices = 0
     total_system_products = 0
 
-    for store in stores_qs:
-        prod_count = Product.objects.filter(store=store).count()
-        inv_count = Invoice.objects.filter(store=store).count()
-        rev = Invoice.objects.filter(store=store, status='PAID').aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
+    for usr in users_qs:
+        store = getattr(usr, 'store', None)
+        if store:
+            prod_count = Product.objects.filter(store=store).count()
+            inv_count = Invoice.objects.filter(store=store).count()
+            rev = Invoice.objects.filter(store=store, status='PAID').aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
+        else:
+            prod_count = 0
+            inv_count = 0
+            rev = Decimal('0.00')
 
         total_system_revenue += rev
         total_system_invoices += inv_count
@@ -292,7 +301,7 @@ def admin_dashboard(request):
 
         stores_data.append({
             'store': store,
-            'owner': store.owner,
+            'owner': usr,
             'product_count': prod_count,
             'invoice_count': inv_count,
             'revenue': rev,
@@ -309,6 +318,23 @@ def admin_dashboard(request):
     return render(request, 'admin_dashboard.html', context)
 
 
+def _delete_user_and_store_cascade(user=None, store=None):
+    """Safely delete a user and all store data in dependency order."""
+    with transaction.atomic():
+        if store is not None:
+            InvoiceItem.objects.filter(Q(invoice__store=store) | Q(product__store=store)).delete()
+            KhataLedger.objects.filter(customer__store=store).delete()
+            Invoice.objects.filter(store=store).delete()
+            Customer.objects.filter(store=store).delete()
+            Batch.objects.filter(product__store=store).delete()
+            Product.objects.filter(store=store).delete()
+            Category.objects.filter(store=store).delete()
+            UpiPaymentSession.objects.filter(store=store).delete()
+            store.delete()
+        if user is not None and not user.is_superuser and user.username.lower() != 'admin':
+            user.delete()
+
+
 @user_passes_test(is_admin)
 @require_http_methods(["POST"])
 def api_admin_verify_kyc(request, store_id):
@@ -317,6 +343,42 @@ def api_admin_verify_kyc(request, store_id):
     status = request.POST.get('status', 'VERIFIED')
     store.kyc_status = status
     store.save()
+    return redirect('admin_dashboard')
+
+
+@user_passes_test(is_admin)
+@require_http_methods(["POST"])
+def api_admin_delete_user(request, user_id):
+    """Admin delete a single non-admin shopkeeper user and their store."""
+    usr = get_object_or_404(User, id=user_id)
+    if usr.is_superuser or usr.username.lower() == 'admin':
+        messages.error(request, 'Cannot delete Super Admin account.')
+        return redirect('admin_dashboard')
+
+    username = usr.username
+    store = getattr(usr, 'store', None)
+    _delete_user_and_store_cascade(user=usr, store=store)
+    messages.success(request, f'Removed user "{username}" and all associated store data.')
+    return redirect('admin_dashboard')
+
+
+@user_passes_test(is_admin)
+@require_http_methods(["POST"])
+def api_admin_delete_all_users(request):
+    """Admin delete all non-admin shopkeeper users and their stores."""
+    non_admin_users = list(User.objects.filter(is_superuser=False).exclude(username__iexact='admin').select_related('store'))
+    removed_count = 0
+    for usr in non_admin_users:
+        store = getattr(usr, 'store', None)
+        _delete_user_and_store_cascade(user=usr, store=store)
+        removed_count += 1
+
+    # Also clean up any orphaned non-admin stores (keeping id=1 Super Admin portal store)
+    orphaned_stores = list(StoreProfile.objects.filter(owner__isnull=True).exclude(id=1))
+    for st in orphaned_stores:
+        _delete_user_and_store_cascade(user=None, store=st)
+
+    messages.success(request, f'Removed {removed_count} user account(s). Any new user login/registration will appear here with full details.')
     return redirect('admin_dashboard')
 
 

@@ -27,6 +27,14 @@ class StoreProfile(models.Model):
     email = models.EmailField(blank=True, default="contact@retail.local")
     gstin = models.CharField(max_length=15, blank=True, null=True, help_text="GST Identification Number")
     upi_id = models.CharField(max_length=100, default="store@upi", help_text="Store VPA for dynamic QR billing (GPay/Paytm/PhonePe)")
+    payment_gateway = models.CharField(
+        max_length=20,
+        choices=[('NONE', 'Manual UPI'), ('PAYTM', 'Paytm for Business'), ('RAZORPAY', 'Razorpay')],
+        default='NONE'
+    )
+    paytm_mid = models.CharField(max_length=100, blank=True, default='', help_text="Paytm Merchant ID (MID)")
+    paytm_merchant_key = models.CharField(max_length=120, blank=True, default='', help_text="Paytm Merchant Key")
+    paytm_is_staging = models.BooleanField(default=False, help_text="Use Paytm staging environment for testing")
     razorpay_key_id = models.CharField(max_length=120, blank=True, default='', help_text="Razorpay Key ID for automatic UPI QR detection")
     razorpay_key_secret = models.CharField(max_length=120, blank=True, default='', help_text="Razorpay Key Secret for automatic UPI QR detection")
     pan_number = models.CharField(max_length=10, blank=True, null=True, help_text="PAN Card Number for Merchant KYC")
@@ -273,7 +281,9 @@ class UpiPaymentSession(models.Model):
     ]
 
     store = models.ForeignKey(StoreProfile, on_delete=models.CASCADE, related_name='upi_sessions')
+    gateway = models.CharField(max_length=20, default='PAYTM')
     qr_id = models.CharField(max_length=100, unique=True, db_index=True)
+    order_id = models.CharField(max_length=100, blank=True, default='', db_index=True)
     client_invoice_id = models.CharField(max_length=100, blank=True, default='', db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')

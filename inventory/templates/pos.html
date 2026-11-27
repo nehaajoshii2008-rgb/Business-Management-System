@@ -161,15 +161,17 @@
                     <i class="bi bi-qr-code me-2"></i>Generate Dynamic UPI QR
                 </button>
                 <div class="d-flex justify-content-between align-items-center mt-1 px-1">
-                    <small id="razorpay-status-badge" class="fw-semibold {% if has_razorpay %}text-success{% else %}text-muted{% endif %}">
-                        {% if has_razorpay %}
+                    <small id="gateway-status-badge" class="fw-semibold {% if active_gateway != 'NONE' %}text-success{% else %}text-muted{% endif %}">
+                        {% if active_gateway == 'PAYTM' %}
+                            <i class="bi bi-lightning-charge-fill me-1"></i>Auto-Detect Active (Paytm)
+                        {% elif active_gateway == 'RAZORPAY' %}
                             <i class="bi bi-lightning-charge-fill me-1"></i>Auto-Detect Active (Razorpay)
                         {% else %}
                             <i class="bi bi-hand-index me-1"></i>Manual Confirm Mode
                         {% endif %}
                     </small>
-                    <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none fw-bold" data-bs-toggle="modal" data-bs-target="#razorpaySettingsModal">
-                        <i class="bi bi-gear me-1"></i>{% if has_razorpay %}Settings{% else %}Enable Auto-Detect{% endif %}
+                    <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none fw-bold" data-bs-toggle="modal" data-bs-target="#paymentGatewaySettingsModal">
+                        <i class="bi bi-gear me-1"></i>{% if active_gateway != 'NONE' %}Settings{% else %}Connect Paytm / Auto-Detect{% endif %}
                     </button>
                 </div>
             </div>
@@ -232,8 +234,8 @@
 
                 <div id="upi-setup-hint" class="mt-3 pt-2 border-top d-none">
                     <small class="text-muted">Want it to show <strong>Payment Done</strong> automatically without clicking? </small>
-                    <button type="button" class="btn btn-link btn-sm p-0 fw-bold text-decoration-none" onclick="openRazorpaySettingsFromQr()">
-                        Add Razorpay API Keys
+                    <button type="button" class="btn btn-link btn-sm p-0 fw-bold text-decoration-none" onclick="openGatewaySettingsFromQr()">
+                        Connect Paytm for Business
                     </button>
                 </div>
             </div>
@@ -283,28 +285,55 @@
     </div>
 </div>
 
-<!-- Razorpay Auto-Detect Settings Modal -->
-<div class="modal fade" id="razorpaySettingsModal" tabindex="-1" aria-hidden="true">
+<!-- Payment Gateway Auto-Detect Settings Modal (Paytm / Razorpay) -->
+<div class="modal fade" id="paymentGatewaySettingsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content p-4 border-0 shadow-lg">
             <h4 class="fw-bold text-primary mb-1"><i class="bi bi-lightning-charge-fill me-1"></i>Automatic QR Payment Detection</h4>
-            <p class="text-muted small mb-3">Connect your Razorpay Merchant API keys so UPI QR payments automatically switch to <strong>Payment Done</strong> without clicking.</p>
+            <p class="text-muted small mb-3">Connect <strong>Paytm for Business</strong> (or Razorpay) so UPI QR payments automatically switch to <strong>Payment Done</strong> without clicking.</p>
 
-            <div class="mb-2">
-                <label class="form-label small fw-bold">Store UPI ID (Fallback QR)</label>
-                <input type="text" id="settings-upi-id" class="form-control" value="{{ store.upi_id }}" placeholder="yourstore@okicici">
-            </div>
-            <div class="mb-2">
-                <label class="form-label small fw-bold">Razorpay Key ID</label>
-                <input type="text" id="settings-rzp-key-id" class="form-control" value="{{ razorpay_key_id }}" placeholder="rzp_live_xxxxxxxxxxxx or rzp_test_xxxxxxxxxxxx">
-            </div>
             <div class="mb-3">
-                <label class="form-label small fw-bold">Razorpay Key Secret</label>
-                <input type="password" id="settings-rzp-key-secret" class="form-control" placeholder="{% if has_razorpay %}Saved (leave blank to keep existing){% else %}Enter Razorpay Key Secret{% endif %}">
+                <label class="form-label small fw-bold">Store UPI ID (Fallback QR)</label>
+                <input type="text" id="settings-upi-id" class="form-control" value="{{ store.upi_id }}" placeholder="yourstore@pthdfc">
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label small fw-bold">Auto-Detect Gateway</label>
+                <select id="settings-gateway" class="form-select" onchange="toggleGatewayFields()">
+                    <option value="PAYTM" {% if active_gateway == 'PAYTM' or active_gateway == 'NONE' %}selected{% endif %}>Paytm for Business (MID + Merchant Key)</option>
+                    <option value="RAZORPAY" {% if active_gateway == 'RAZORPAY' %}selected{% endif %}>Razorpay (Key ID + Key Secret)</option>
+                    <option value="NONE">Manual UPI Only (No Gateway)</option>
+                </select>
+            </div>
+
+            <div id="gateway-paytm-fields">
+                <div class="mb-2">
+                    <label class="form-label small fw-bold">Paytm Merchant ID (MID)</label>
+                    <input type="text" id="settings-paytm-mid" class="form-control" value="{{ paytm_mid }}" placeholder="Your Paytm Business MID">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small fw-bold">Paytm Merchant Key</label>
+                    <input type="password" id="settings-paytm-key" class="form-control" placeholder="{% if has_paytm %}Saved (leave blank to keep existing){% else %}Enter Paytm Merchant Key{% endif %}">
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="settings-paytm-staging" {% if paytm_is_staging %}checked{% endif %}>
+                    <label class="form-check-label small" for="settings-paytm-staging">Use Paytm Staging / Sandbox Mode</label>
+                </div>
+            </div>
+
+            <div id="gateway-razorpay-fields" class="d-none">
+                <div class="mb-2">
+                    <label class="form-label small fw-bold">Razorpay Key ID</label>
+                    <input type="text" id="settings-rzp-key-id" class="form-control" value="{{ razorpay_key_id }}" placeholder="rzp_live_xxxxxxxxxxxx">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Razorpay Key Secret</label>
+                    <input type="password" id="settings-rzp-key-secret" class="form-control" placeholder="{% if has_razorpay %}Saved (leave blank to keep existing){% else %}Enter Razorpay Key Secret{% endif %}">
+                </div>
             </div>
 
             <div class="d-flex gap-2">
-                {% if has_razorpay %}
+                {% if active_gateway != 'NONE' %}
                 <button type="button" class="btn btn-outline-danger fw-bold" onclick="savePaymentSettings(true)">Disconnect</button>
                 {% endif %}
                 <button type="button" class="btn btn-secondary flex-fill" data-bs-dismiss="modal">Close</button>
@@ -652,16 +681,38 @@
         stopUpiStatusPolling();
     });
 
-    function openRazorpaySettingsFromQr() {
+    function openGatewaySettingsFromQr() {
         const upiModalEl = document.getElementById('upiModal');
         const upiModalInstance = bootstrap.Modal.getInstance(upiModalEl);
         if (upiModalInstance) upiModalInstance.hide();
-        const settingsModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('razorpaySettingsModal'));
+        toggleGatewayFields();
+        const settingsModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('paymentGatewaySettingsModal'));
         settingsModal.show();
     }
 
-    async function savePaymentSettings(clearRazorpay = false) {
+    function toggleGatewayFields() {
+        const gw = document.getElementById('settings-gateway').value;
+        const paytmBox = document.getElementById('gateway-paytm-fields');
+        const rzpBox = document.getElementById('gateway-razorpay-fields');
+        if (gw === 'PAYTM') {
+            paytmBox.classList.remove('d-none');
+            rzpBox.classList.add('d-none');
+        } else if (gw === 'RAZORPAY') {
+            paytmBox.classList.add('d-none');
+            rzpBox.classList.remove('d-none');
+        } else {
+            paytmBox.classList.add('d-none');
+            rzpBox.classList.add('d-none');
+        }
+    }
+    document.addEventListener('DOMContentLoaded', toggleGatewayFields);
+
+    async function savePaymentSettings(clearGateway = false) {
         const upiId = document.getElementById('settings-upi-id').value.trim();
+        const gateway = document.getElementById('settings-gateway').value;
+        const paytmMid = document.getElementById('settings-paytm-mid').value.trim();
+        const paytmKey = document.getElementById('settings-paytm-key').value.trim();
+        const paytmStaging = document.getElementById('settings-paytm-staging').checked;
         const keyId = document.getElementById('settings-rzp-key-id').value.trim();
         const keySecret = document.getElementById('settings-rzp-key-secret').value.trim();
 
@@ -674,9 +725,13 @@
                 },
                 body: JSON.stringify({
                     upi_id: upiId,
+                    payment_gateway: gateway,
+                    paytm_mid: paytmMid,
+                    paytm_merchant_key: paytmKey,
+                    paytm_is_staging: paytmStaging,
                     razorpay_key_id: keyId,
                     razorpay_key_secret: keySecret,
-                    clear_razorpay: clearRazorpay
+                    clear_gateway: clearGateway
                 })
             });
             const data = await res.json();
@@ -762,7 +817,7 @@
             };
             qrImg.src = data.image_url;
 
-            if (data.mode === 'razorpay' && data.qr_id) {
+            if ((data.mode === 'paytm' || data.mode === 'razorpay') && data.qr_id) {
                 activeQrId = data.qr_id;
                 document.getElementById('upi-autodetect-banner').classList.remove('d-none');
                 document.getElementById('upi-manual-actions').classList.add('d-none');

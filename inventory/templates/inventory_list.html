@@ -1,9 +1,29 @@
 {% extends 'base.html' %}
 
-{% block title %}Inventory & Stock Control | ISBMS Business Management System{% endblock %}
+{% block title %}Stock Control | VyaparSetu{% endblock %}
 
 {% block content %}
 <div class="row g-3">
+    {% if messages %}
+    <div class="col-12">
+        {% for message in messages %}
+        <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %} alert-dismissible fade show shadow-sm mb-0" role="alert">
+            <i class="bi bi-{% if message.tags == 'error' %}exclamation-triangle-fill{% else %}check-circle-fill{% endif %} me-2"></i>{{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="col-12">
+        <div class="alert alert-danger alert-dismissible fade show shadow-sm mb-0" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ error }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Header Title & Bulk Action Buttons -->
     <div class="col-12">
         <div class="card card-custom p-4 bg-white">
@@ -13,17 +33,56 @@
                     <p class="text-muted mb-0" data-i18n="inv_subtitle">Manage products, monitor stock counts, add batches manually, or bulk import via Excel/CSV.</p>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
-                    <a href="{% url 'api_download_sample_excel' %}" class="btn btn-outline-secondary fw-bold">
-                        <i class="bi bi-download me-1"></i><span data-i18n="inv_download_sample">Download Sample Excel Template</span>
-                    </a>
+                    <div class="btn-group">
+                        <a href="{% url 'api_download_sample_excel' %}" class="btn btn-outline-secondary fw-bold">
+                            <i class="bi bi-download me-1"></i><span data-i18n="inv_download_sample">Sample Excel</span>
+                        </a>
+                        <a href="{% url 'api_download_sample_csv' %}" class="btn btn-outline-secondary fw-bold">
+                            <i class="bi bi-filetype-csv me-1"></i>Sample CSV
+                        </a>
+                    </div>
                     <button class="btn btn-primary fw-bold" data-bs-toggle="modal" data-bs-target="#excelImportModal">
                         <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="inv_upload_excel">Upload Excel / CSV Stock Sheet</span>
                     </button>
                     <button class="btn btn-success fw-bold" data-bs-toggle="modal" data-bs-target="#addProductModal">
                         <i class="bi bi-plus-lg me-1"></i><span data-i18n="inv_add_product">Add Product Manually</span>
                     </button>
+                    {% if total_products_count > 0 %}
+                    <button type="button" class="btn btn-outline-danger fw-bold d-none" id="btn-delete-selected" onclick="deleteSelectedProducts()">
+                        <i class="bi bi-trash me-1"></i>Delete Selected (<span id="selected-count">0</span>)
+                    </button>
+                    <button type="button" class="btn btn-danger fw-bold" data-bs-toggle="modal" data-bs-target="#deleteAllModal">
+                        <i class="bi bi-trash3-fill me-1"></i>Delete All
+                    </button>
+                    {% endif %}
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Inventory Summary Cards -->
+    <div class="col-6 col-md-3">
+        <div class="card card-custom p-3 bg-white border-start border-4 border-primary">
+            <span class="text-muted small text-uppercase fw-bold">Total Products</span>
+            <h4 class="fw-bold text-dark mb-0 mt-1">{{ total_products_count }}</h4>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-custom p-3 bg-white border-start border-4 border-success">
+            <span class="text-muted small text-uppercase fw-bold">Total Stock Units</span>
+            <h4 class="fw-bold text-success mb-0 mt-1">{{ total_stock_units }}</h4>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-custom p-3 bg-white border-start border-4 border-info">
+            <span class="text-muted small text-uppercase fw-bold">Inventory Cost Value</span>
+            <h4 class="fw-bold text-primary mb-0 mt-1">₹{{ total_stock_cost|floatformat:2 }}</h4>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-custom p-3 bg-white border-start border-4 border-danger">
+            <span class="text-muted small text-uppercase fw-bold">Low Stock Items</span>
+            <h4 class="fw-bold text-danger mb-0 mt-1">{{ low_stock_count }}</h4>
         </div>
     </div>
 
@@ -32,7 +91,7 @@
         <div class="card card-custom p-3">
             <form method="GET" action="{% url 'inventory_list' %}" class="row g-2 mb-3">
                 <div class="col-md-10">
-                    <input type="text" name="q" class="form-control form-control-lg" placeholder="Search by Product Name or Barcode/SKU..." data-i18n-placeholder="inv_search_placeholder" value="{{ query }}">
+                    <input type="text" name="q" class="form-control form-control-lg" placeholder="Search by Product Name, Category or Barcode/SKU..." data-i18n-placeholder="inv_search_placeholder" value="{{ query }}">
                 </div>
                 <div class="col-md-2">
                     <button type="submit" class="btn btn-success btn-lg w-100 fw-bold">
@@ -45,6 +104,9 @@
                 <table class="table table-hover align-middle">
                     <thead class="table-light">
                         <tr>
+                            <th style="width: 36px;">
+                                <input type="checkbox" class="form-check-input" id="select-all-products" title="Select All" onchange="toggleSelectAllProducts(this)">
+                            </th>
                             <th>#</th>
                             <th data-i18n="inv_col_name">Product Name</th>
                             <th data-i18n="inv_col_sku">SKU / Barcode</th>
@@ -61,8 +123,14 @@
                         {% if products %}
                             {% for prod in products %}
                             <tr id="product-row-{{ prod.id }}">
+                                <td>
+                                    <input type="checkbox" class="form-check-input product-checkbox" value="{{ prod.id }}" onchange="updateSelectedCount()">
+                                </td>
                                 <td>{{ forloop.counter }}</td>
-                                <td class="fw-bold text-dark fs-6">{{ prod.name }}</td>
+                                <td>
+                                    <div class="fw-bold text-dark fs-6">{{ prod.name }}</div>
+                                    <small class="text-muted">HSN: {{ prod.hsn_code|default:"-" }} | GST: {{ prod.gst_rate|floatformat:0 }}%</small>
+                                </td>
                                 <td><code>{{ prod.sku }}</code></td>
                                 <td><span class="badge bg-light text-dark border">{{ prod.category.name|default:"General" }}</span></td>
                                 <td>{{ prod.unit }}</td>
@@ -74,18 +142,37 @@
                                     {% endif %}
                                 </td>
                                 <td class="fw-bold text-success">₹{{ prod.selling_price|floatformat:2 }}</td>
-                                <td class="text-muted">₹{{ prod.cost_price|default:"0.00"|floatformat:2 }}</td>
+                                <td class="fw-semibold text-dark">₹{{ prod.cost_price|floatformat:2 }}</td>
                                 <td>
                                     {% for b in prod.batches.all %}
                                         <small class="d-block text-muted">
-                                            Batch: <strong>{{ b.batch_number }}</strong> | Exp: {{ b.expiry_date|date:"Y-m-d"|default:"N/A" }} | Stock: {{ b.current_stock }}
+                                            Batch: <strong>{{ b.batch_number }}</strong> | Stock: <strong>{{ b.current_stock }}</strong> | Sell: ₹{{ b.selling_price|floatformat:2 }} | Cost: ₹{{ b.cost_price|floatformat:2 }}{% if b.expiry_date %} | Exp: {{ b.expiry_date|date:"Y-m-d" }}{% endif %}
                                         </small>
                                     {% empty %}
                                         <small class="text-muted">No Batch</small>
                                     {% endfor %}
                                 </td>
-                                <td class="text-end">
-                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteProduct({{ prod.id }}, '{{ prod.name|escapejs }}')">
+                                <td class="text-end text-nowrap">
+                                    <button type="button" class="btn btn-sm btn-outline-primary me-1"
+                                        data-id="{{ prod.id }}"
+                                        data-name="{{ prod.name }}"
+                                        data-sku="{{ prod.sku }}"
+                                        data-category-id="{{ prod.category_id|default:'' }}"
+                                        data-unit="{{ prod.unit }}"
+                                        data-hsn="{{ prod.hsn_code }}"
+                                        data-gst="{{ prod.gst_rate }}"
+                                        data-min-stock="{{ prod.min_stock_alert }}"
+                                        data-batch-id="{{ prod.active_batch.id|default:'' }}"
+                                        data-batch-number="{{ prod.active_batch.batch_number|default:'DEFAULT' }}"
+                                        data-expiry="{{ prod.active_batch.expiry_date|date:'Y-m-d'|default:'' }}"
+                                        data-selling="{{ prod.selling_price }}"
+                                        data-mrp="{{ prod.mrp }}"
+                                        data-cost="{{ prod.cost_price }}"
+                                        data-stock="{{ prod.active_batch.current_stock|default:0 }}"
+                                        onclick="openEditProductModal(this)">
+                                        <i class="bi bi-pencil-square me-1"></i>Edit
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteProduct({{ prod.id }}, '{{ prod.name|escapejs }}')">
                                         <i class="bi bi-trash me-1"></i>Delete
                                     </button>
                                 </td>
@@ -93,9 +180,9 @@
                             {% endfor %}
                         {% else %}
                             <tr>
-                                <td colspan="9" class="text-center py-5 text-muted">
+                                <td colspan="11" class="text-center py-5 text-muted">
                                     <i class="bi bi-box-seam fs-1 text-secondary d-block mb-2"></i>
-                                    No products found in inventory. Upload an Excel stock sheet above or add products manually.
+                                    No products found in inventory. Upload an Excel/CSV stock sheet above or add products manually.
                                 </td>
                             </tr>
                         {% endif %}
@@ -110,8 +197,10 @@
 <div class="modal fade" id="excelImportModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content p-4">
-            <h4 class="fw-bold text-success mb-2"><i class="bi bi-file-earmark-excel me-2"></i>Bulk Excel Stock Upload</h4>
-            <p class="text-muted small mb-3">Upload your store stock list in Excel (.xlsx) or CSV format. Our engine automatically parses products, prices, stock counts, and expiry dates.</p>
+            <h4 class="fw-bold text-success mb-2"><i class="bi bi-file-earmark-excel me-2"></i>Bulk Excel / CSV Stock Upload</h4>
+            <p class="text-muted small mb-3">Upload your store stock list in Excel (.xlsx) or CSV (.csv) format. Our engine automatically parses products, selling prices, cost prices, stock counts, and expiry dates.</p>
+
+            <div id="excel-upload-error" class="alert alert-danger py-2 small d-none mb-3"></div>
 
             <form id="excel-upload-form" enctype="multipart/form-data">
                 <div class="mb-3">
@@ -119,8 +208,21 @@
                     <input type="file" id="excel-file-input" name="file" class="form-control" accept=".xlsx, .xls, .csv" required>
                 </div>
 
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Update Option (For Existing Products)</label>
+                    <select id="excel-update-mode" name="update_mode" class="form-select">
+                        <option value="add" selected>Add to existing stock &amp; update cost/selling price</option>
+                        <option value="replace">Replace existing stock count &amp; update cost/selling price</option>
+                        <option value="prices_only">Update cost &amp; selling prices only (keep stock unchanged)</option>
+                    </select>
+                </div>
+
                 <div class="alert alert-info py-2 small mb-3">
                     <i class="bi bi-info-circle me-1"></i> Columns accepted: <strong>Product Name, SKU/Barcode, Category, Unit, Selling Price, MRP, Cost Price, Stock Quantity, Batch Number, Expiry Date</strong>.
+                    <div class="mt-2 d-flex gap-2">
+                        <a href="{% url 'api_download_sample_excel' %}" class="btn btn-sm btn-outline-primary"><i class="bi bi-download me-1"></i>Sample .xlsx</a>
+                        <a href="{% url 'api_download_sample_csv' %}" class="btn btn-sm btn-outline-success"><i class="bi bi-filetype-csv me-1"></i>Sample .csv</a>
+                    </div>
                 </div>
 
                 <div class="d-flex gap-2">
@@ -136,71 +238,237 @@
 
 <!-- Modal 2: Manual Product Add Modal -->
 <div class="modal fade" id="addProductModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content p-4">
             <h4 class="fw-bold text-success mb-3"><i class="bi bi-plus-circle me-2"></i>Add Product & Batch Manually</h4>
 
             <form method="POST" action="{% url 'api_add_product_manual' %}">
                 {% csrf_token %}
-                <div class="mb-2">
-                    <label class="form-label small fw-bold">Product Name *</label>
-                    <input type="text" name="name" class="form-control" placeholder="e.g. Fortune Sunflower Oil 1L" required>
-                </div>
-
                 <div class="row g-2 mb-2">
-                    <div class="col-6">
+                    <div class="col-md-7">
+                        <label class="form-label small fw-bold">Product Name *</label>
+                        <input type="text" name="name" class="form-control" placeholder="e.g. Fortune Sunflower Oil 1L" required>
+                    </div>
+                    <div class="col-md-5">
                         <label class="form-label small fw-bold">SKU / Barcode *</label>
                         <input type="text" name="sku" class="form-control" placeholder="8901234567890" required>
                     </div>
-                    <div class="col-6">
+                </div>
+
+                <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Category</label>
+                        <select name="category_id" class="form-select">
+                            <option value="">General / Uncategorized</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}">{{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Or New Category</label>
+                        <input type="text" name="new_category" class="form-control" placeholder="e.g. Grocery, Perfumes">
+                    </div>
+                    <div class="col-md-4">
                         <label class="form-label small fw-bold">Unit</label>
                         <select name="unit" class="form-select">
-                            <option value="Pcs">Pieces (Pcs)</option>
-                            <option value="Kg">Kilograms (Kg)</option>
-                            <option value="Ltr">Liters (Ltr)</option>
-                            <option value="Pack">Pack</option>
-                            <option value="Strip">Strip (Pharma)</option>
+                            {% for val, label in unit_choices %}
+                            <option value="{{ val }}" {% if val == 'Pcs' %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                 </div>
 
                 <div class="row g-2 mb-2">
-                    <div class="col-4">
+                    <div class="col-md-4">
                         <label class="form-label small fw-bold">Selling Price (₹) *</label>
-                        <input type="number" name="selling_price" class="form-control" placeholder="145.00" step="0.01" required>
+                        <input type="number" name="selling_price" class="form-control" placeholder="145.00" step="0.01" min="0" required>
                     </div>
-                    <div class="col-4">
+                    <div class="col-md-4">
                         <label class="form-label small fw-bold">MRP (₹)</label>
-                        <input type="number" name="mrp" class="form-control" placeholder="160.00" step="0.01">
+                        <input type="number" name="mrp" class="form-control" placeholder="160.00" step="0.01" min="0">
                     </div>
-                    <div class="col-4">
-                        <label class="form-label small fw-bold">Cost Price (₹)</label>
-                        <input type="number" name="cost_price" class="form-control" placeholder="125.00" step="0.01">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Cost Price (₹) *</label>
+                        <input type="number" name="cost_price" class="form-control" placeholder="125.00" step="0.01" min="0" required>
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Stock Quantity *</label>
+                        <input type="number" name="stock_quantity" class="form-control" placeholder="50" min="0" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Batch Number</label>
+                        <input type="text" name="batch_number" class="form-control" placeholder="B-2026-01">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Expiry Date</label>
+                        <input type="date" name="expiry_date" class="form-control">
                     </div>
                 </div>
 
                 <div class="row g-2 mb-3">
-                    <div class="col-4">
-                        <label class="form-label small fw-bold">Stock Quantity *</label>
-                        <input type="number" name="stock_quantity" class="form-control" placeholder="50" required>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">HSN Code</label>
+                        <input type="text" name="hsn_code" class="form-control" value="3303" placeholder="3303">
                     </div>
-                    <div class="col-4">
-                        <label class="form-label small fw-bold">Batch Number</label>
-                        <input type="text" name="batch_number" class="form-control" placeholder="B-2026-01">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">GST Rate (%)</label>
+                        <select name="gst_rate" class="form-select">
+                            <option value="0">0% (Exempt)</option>
+                            <option value="5">5%</option>
+                            <option value="12">12%</option>
+                            <option value="18" selected>18%</option>
+                            <option value="28">28%</option>
+                        </select>
                     </div>
-                    <div class="col-4">
-                        <label class="form-label small fw-bold">Expiry Date</label>
-                        <input type="date" name="expiry_date" class="form-control">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Low Stock Alert At</label>
+                        <input type="number" name="min_stock_alert" class="form-control" value="5" min="0">
                     </div>
                 </div>
 
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-secondary w-50" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-success w-50 fw-bold">
-                        Save Product
+                        <i class="bi bi-check-lg me-1"></i>Save Product
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 3: Edit Product & Stock Modal -->
+<div class="modal fade" id="editProductModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content p-4">
+            <h4 class="fw-bold text-primary mb-3"><i class="bi bi-pencil-square me-2"></i>Edit Product, Cost & Stock</h4>
+
+            <form id="edit-product-form" method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="batch_id" id="edit-batch-id">
+                <div class="row g-2 mb-2">
+                    <div class="col-md-7">
+                        <label class="form-label small fw-bold">Product Name *</label>
+                        <input type="text" name="name" id="edit-name" class="form-control" required>
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label small fw-bold">SKU / Barcode *</label>
+                        <input type="text" name="sku" id="edit-sku" class="form-control" required>
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Category</label>
+                        <select name="category_id" id="edit-category-id" class="form-select">
+                            <option value="">General / Uncategorized</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}">{{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Or New Category</label>
+                        <input type="text" name="new_category" id="edit-new-category" class="form-control" placeholder="Optional new category">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Unit</label>
+                        <select name="unit" id="edit-unit" class="form-select">
+                            {% for val, label in unit_choices %}
+                            <option value="{{ val }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Selling Price (₹) *</label>
+                        <input type="number" name="selling_price" id="edit-selling" class="form-control" step="0.01" min="0" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">MRP (₹)</label>
+                        <input type="number" name="mrp" id="edit-mrp" class="form-control" step="0.01" min="0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Cost Price (₹) *</label>
+                        <input type="number" name="cost_price" id="edit-cost" class="form-control" step="0.01" min="0" required>
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-2">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Batch &amp; Stock Update Mode</label>
+                        <select name="batch_action" id="edit-batch-action" class="form-select" onchange="onEditBatchActionChange()">
+                            <option value="update" selected>Set / Overwrite Batch Stock</option>
+                            <option value="add_stock">Add (+) Stock to Current Batch</option>
+                            <option value="new_batch">Add as New Batch</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold" id="edit-stock-label">Batch Stock Quantity *</label>
+                        <input type="number" name="stock_quantity" id="edit-stock" class="form-control" min="0" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Batch Number</label>
+                        <input type="text" name="batch_number" id="edit-batch-number" class="form-control">
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-2">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Expiry Date</label>
+                        <input type="date" name="expiry_date" id="edit-expiry" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Low Stock Alert At</label>
+                        <input type="number" name="min_stock_alert" id="edit-min-stock" class="form-control" min="0">
+                    </div>
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">HSN Code</label>
+                        <input type="text" name="hsn_code" id="edit-hsn" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">GST Rate (%)</label>
+                        <input type="number" name="gst_rate" id="edit-gst" class="form-control" step="0.01" min="0">
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-secondary w-50" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary w-50 fw-bold">
+                        <i class="bi bi-save me-1"></i>Update Product
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 4: Delete All Products Confirmation Modal -->
+<div class="modal fade" id="deleteAllModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content p-4 text-center border-0 shadow-lg">
+            <div class="mb-2 text-danger">
+                <i class="bi bi-exclamation-octagon-fill" style="font-size: 3rem;"></i>
+            </div>
+            <h4 class="fw-bold text-danger mb-2">Delete All Products?</h4>
+            <p class="text-muted mb-3">
+                This will remove all <strong>{{ total_products_count }}</strong> product(s) and their stock batches from your store inventory. Past invoice history will stay safe.
+            </p>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-secondary w-50 fw-bold" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger w-50 fw-bold" id="btn-confirm-delete-all" onclick="deleteAllProducts()">
+                    <i class="bi bi-trash3-fill me-1"></i>Yes, Delete All
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -208,8 +476,80 @@
 
 {% block extra_js %}
 <script>
+    let currentEditInitialStock = '0';
+
+    function onEditBatchActionChange() {
+        const action = document.getElementById('edit-batch-action').value;
+        const label = document.getElementById('edit-stock-label');
+        const stockInput = document.getElementById('edit-stock');
+        if (action === 'add_stock') {
+            label.innerText = 'Quantity to Add (+) *';
+            stockInput.value = '0';
+        } else if (action === 'new_batch') {
+            label.innerText = 'New Batch Stock Quantity *';
+            stockInput.value = '0';
+        } else {
+            label.innerText = 'Batch Stock Quantity *';
+            stockInput.value = currentEditInitialStock;
+        }
+    }
+
+    function openEditProductModal(btn) {
+        const d = btn.dataset;
+        const form = document.getElementById('edit-product-form');
+        form.action = `/api/inventory/edit-product/${d.id}/`;
+
+        currentEditInitialStock = d.stock || '0';
+        document.getElementById('edit-batch-action').value = 'update';
+        document.getElementById('edit-stock-label').innerText = 'Batch Stock Quantity *';
+
+        document.getElementById('edit-batch-id').value = d.batchId || '';
+        document.getElementById('edit-name').value = d.name || '';
+        document.getElementById('edit-sku').value = d.sku || '';
+        document.getElementById('edit-category-id').value = d.categoryId || '';
+        document.getElementById('edit-new-category').value = '';
+        document.getElementById('edit-unit').value = d.unit || 'Pcs';
+        document.getElementById('edit-hsn').value = d.hsn || '3303';
+        document.getElementById('edit-gst').value = parseFloat(d.gst || '18').toFixed(2);
+        document.getElementById('edit-min-stock').value = d.minStock || '5';
+        document.getElementById('edit-selling').value = parseFloat(d.selling || '0').toFixed(2);
+        document.getElementById('edit-mrp').value = parseFloat(d.mrp || '0').toFixed(2);
+        document.getElementById('edit-cost').value = parseFloat(d.cost || '0').toFixed(2);
+        document.getElementById('edit-stock').value = currentEditInitialStock;
+        document.getElementById('edit-batch-number').value = d.batchNumber || 'DEFAULT';
+        document.getElementById('edit-expiry').value = d.expiry || '';
+
+        const modal = new bootstrap.Modal(document.getElementById('editProductModal'));
+        modal.show();
+    }
+
+    function toggleSelectAllProducts(masterCheckbox) {
+        document.querySelectorAll('.product-checkbox').forEach(cb => {
+            cb.checked = masterCheckbox.checked;
+        });
+        updateSelectedCount();
+    }
+
+    function updateSelectedCount() {
+        const checked = document.querySelectorAll('.product-checkbox:checked');
+        const btn = document.getElementById('btn-delete-selected');
+        const countSpan = document.getElementById('selected-count');
+        if (countSpan) countSpan.innerText = checked.length;
+        if (btn) {
+            if (checked.length > 0) {
+                btn.classList.remove('d-none');
+            } else {
+                btn.classList.add('d-none');
+            }
+        }
+    }
+
     async function uploadExcelSheet() {
         const fileInput = document.getElementById('excel-file-input');
+        const errBox = document.getElementById('excel-upload-error');
+        errBox.classList.add('d-none');
+        errBox.innerText = '';
+
         if (!fileInput.files || fileInput.files.length === 0) {
             showToast('Please select an Excel (.xlsx) or CSV file first', 'warning');
             return;
@@ -217,6 +557,7 @@
 
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
+        formData.append('update_mode', document.getElementById('excel-update-mode').value);
 
         const btnSubmit = document.getElementById('btn-submit-excel');
         btnSubmit.disabled = true;
@@ -234,13 +575,18 @@
             const data = await res.json();
             if (res.ok && data.success) {
                 showToast(data.message, 'success');
-                setTimeout(() => location.reload(), 1200);
+                setTimeout(() => location.reload(), 900);
             } else {
-                showToast(data.error || 'Failed to import Excel file', 'danger');
+                const msg = data.error || 'Failed to import stock file';
+                errBox.innerText = msg;
+                errBox.classList.remove('d-none');
+                showToast(msg, 'danger');
             }
         } catch (err) {
             console.error('Excel upload error:', err);
-            showToast('Network error while uploading Excel sheet', 'danger');
+            errBox.innerText = 'Network error while uploading stock sheet';
+            errBox.classList.remove('d-none');
+            showToast('Network error while uploading stock sheet', 'danger');
         } finally {
             btnSubmit.disabled = false;
             btnSubmit.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Import Stock';
@@ -263,14 +609,74 @@
             const data = await res.json();
             if (res.ok && data.success) {
                 showToast(data.message, 'success');
-                const row = document.getElementById(`product-row-${productId}`);
-                if (row) row.remove();
+                setTimeout(() => location.reload(), 600);
             } else {
                 showToast(data.error || 'Failed to delete product', 'danger');
             }
         } catch (err) {
             console.error('Delete product error:', err);
             showToast('Network error while deleting product', 'danger');
+        }
+    }
+
+    async function deleteSelectedProducts() {
+        const ids = Array.from(document.querySelectorAll('.product-checkbox:checked')).map(cb => parseInt(cb.value, 10));
+        if (ids.length === 0) return;
+
+        if (!confirm(`Delete ${ids.length} selected product(s) from inventory?`)) {
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/inventory/delete-selected/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ product_ids: ids })
+            });
+
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast(data.message, 'success');
+                setTimeout(() => location.reload(), 700);
+            } else {
+                showToast(data.error || 'Failed to delete selected products', 'danger');
+            }
+        } catch (err) {
+            console.error('Delete selected error:', err);
+            showToast('Network error while deleting selected products', 'danger');
+        }
+    }
+
+    async function deleteAllProducts() {
+        const btn = document.getElementById('btn-confirm-delete-all');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Deleting...';
+
+        try {
+            const res = await fetch('/api/inventory/delete-all/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
+
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast(data.message, 'success');
+                setTimeout(() => location.reload(), 700);
+            } else {
+                showToast(data.error || 'Failed to delete all products', 'danger');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-trash3-fill me-1"></i>Yes, Delete All';
+            }
+        } catch (err) {
+            console.error('Delete all error:', err);
+            showToast('Network error while deleting all products', 'danger');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-trash3-fill me-1"></i>Yes, Delete All';
         }
     }
 </script>

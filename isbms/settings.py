@@ -1,5 +1,5 @@
 """
-Django settings for ISBMS project.
+Django settings for VyapaarSetu project.
 Production-ready configuration optimized for Render.com free cloud tier / PythonAnywhere.
 """
 
@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings - unsuitable for production
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-isbms-retail-pos-super-secret-key-2026')
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-vyapaarsetu-retail-pos-super-secret-key-2026')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
@@ -107,9 +107,13 @@ LOGOUT_REDIRECT_URL = '/accounts/login/'
 LOGIN_URL = '/accounts/login/'
 
 # Security settings for production (disabled for local desktop HTTP)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.onrender.com',
+    'https://business-management-system-931w.onrender.com',
+]
 ENABLE_SSL = os.environ.get('SECURE_SSL_REDIRECT', 'False').lower() == 'true'
 if not DEBUG and ENABLE_SSL:
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True

@@ -23,9 +23,13 @@ urlpatterns = [
     # Inventory Stock Control & Bulk Excel/CSV Import
     path('inventory/', views.inventory_list_view, name='inventory_list'),
     path('api/inventory/add-manual/', views.api_add_product_manual, name='api_add_product_manual'),
+    path('api/inventory/edit-product/<int:product_id>/', views.api_edit_product, name='api_edit_product'),
     path('api/inventory/delete-product/<int:product_id>/', views.api_delete_product, name='api_delete_product'),
+    path('api/inventory/delete-selected/', views.api_delete_selected_products, name='api_delete_selected_products'),
+    path('api/inventory/delete-all/', views.api_delete_all_products, name='api_delete_all_products'),
     path('api/inventory/import-excel/', views.api_import_excel_stock, name='api_import_excel_stock'),
     path('api/inventory/sample-excel/', views.api_download_sample_excel, name='api_download_sample_excel'),
+    path('api/inventory/sample-csv/', views.api_download_sample_csv, name='api_download_sample_csv'),
 
     # API Endpoints for POS
     path('api/products/search/', views.api_product_search, name='api_product_search'),

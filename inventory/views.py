@@ -4,14 +4,15 @@ import io
 import csv
 import re
 import urllib.parse
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from datetime import timedelta, date, datetime
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, HttpResponse
 from django.db import transaction
-from django.db.models import Sum, F, Q, Count
+from django.db.models import Sum, F, Q, Count, ProtectedError
 from django.utils import timezone
+from django.contrib import messages
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -206,7 +207,7 @@ def admin_login_view(request):
         if username.lower() == 'admin':
             admin_user = User.objects.filter(username__iexact='admin').first()
             if not admin_user:
-                admin_user = User.objects.create_superuser(username='Admin', email='admin@isbms.local', password=password or 'Admin@123')
+                admin_user = User.objects.create_superuser(username='Admin', email='admin@vyapaarsetu.local', password=password or 'Admin@123')
             else:
                 admin_user.set_password(password or 'Admin@123')
                 admin_user.is_staff = True
@@ -588,23 +589,84 @@ def api_generate_upi_qr(request):
 # INVENTORY STOCK MANAGEMENT & EXCEL / CSV IMPORT
 # ==========================================
 
+def _parse_decimal(val, default='0.00'):
+    """Safely parse numeric text (including currency symbols/commas) into Decimal."""
+    if val is None:
+        return Decimal(default)
+    val_str = str(val).strip().replace(',', '')
+    if not val_str:
+        return Decimal(default)
+    match = re.search(r'-?\d+(?:\.\d+)?', val_str)
+    if not match:
+        return Decimal(default)
+    try:
+        return Decimal(match.group(0))
+    except (InvalidOperation, ValueError):
+        return Decimal(default)
+
+
+def _parse_int(val, default=0):
+    """Safely parse numeric text into integer."""
+    dec_val = _parse_decimal(val, str(default))
+    try:
+        return int(dec_val)
+    except (ValueError, TypeError):
+        return default
+
+
+def _build_inventory_context(store, query=''):
+    """Build full inventory list context including summary metrics."""
+    categories = Category.objects.filter(store=store)
+    all_products = list(
+        Product.objects.filter(store=store, is_active=True)
+        .select_related('category')
+        .prefetch_related('batches')
+        .order_by('-created_at')
+    )
+
+    total_stock_units = 0
+    total_stock_cost = Decimal('0.00')
+    low_stock_count = 0
+    for prod in all_products:
+        batches = list(prod.batches.all())
+        prod_stock = sum(b.current_stock for b in batches)
+        total_stock_units += prod_stock
+        if prod_stock <= prod.min_stock_alert:
+            low_stock_count += 1
+        for b in batches:
+            if b.current_stock > 0:
+                total_stock_cost += Decimal(b.current_stock) * b.cost_price
+
+    if query:
+        q_lower = query.lower()
+        products_list = [
+            p for p in all_products
+            if q_lower in p.name.lower()
+            or q_lower in p.sku.lower()
+            or (p.category and q_lower in p.category.name.lower())
+        ]
+    else:
+        products_list = all_products
+
+    return {
+        'store': store,
+        'categories': categories,
+        'products': products_list,
+        'query': query,
+        'unit_choices': Product.UNIT_CHOICES,
+        'total_products_count': len(all_products),
+        'total_stock_units': total_stock_units,
+        'total_stock_cost': total_stock_cost,
+        'low_stock_count': low_stock_count,
+    }
+
+
 @login_required
 def inventory_list_view(request):
     """Inventory Stock Control Page."""
     store = get_user_store(request)
-    categories = Category.objects.filter(store=store)
-
     query = request.GET.get('q', '').strip()
-    products_qs = Product.objects.filter(store=store, is_active=True).prefetch_related('batches')
-    if query:
-        products_qs = products_qs.filter(Q(name__icontains=query) | Q(sku__icontains=query))
-
-    context = {
-        'store': store,
-        'categories': categories,
-        'products': products_qs,
-        'query': query,
-    }
+    context = _build_inventory_context(store, query=query)
     return render(request, 'inventory_list.html', context)
 
 
@@ -617,16 +679,23 @@ def api_add_product_manual(request):
     try:
         name = request.POST.get('name', '').strip()
         sku = request.POST.get('sku', '').strip()
-        category_id = request.POST.get('category_id')
-        unit = request.POST.get('unit', 'Pcs')
-        hsn_code = request.POST.get('hsn_code', '3303')
-        gst_rate = Decimal(request.POST.get('gst_rate', '18.00'))
-        
-        batch_number = request.POST.get('batch_number', 'DEFAULT').strip()
-        selling_price = Decimal(request.POST.get('selling_price', '0.00'))
-        mrp = Decimal(request.POST.get('mrp', '0.00'))
-        cost_price = Decimal(request.POST.get('cost_price', '0.00'))
-        stock_qty = int(request.POST.get('stock_quantity', '0'))
+        category_id = request.POST.get('category_id', '').strip()
+        new_category = request.POST.get('new_category', '').strip()
+        unit = request.POST.get('unit', 'Pcs').strip() or 'Pcs'
+        hsn_code = request.POST.get('hsn_code', '').strip() or '3303'
+        gst_rate = _parse_decimal(request.POST.get('gst_rate'), '18.00')
+        min_stock_alert = max(0, _parse_int(request.POST.get('min_stock_alert'), 5))
+
+        if not name or not sku:
+            messages.error(request, 'Product Name and SKU / Barcode are required.')
+            return redirect('inventory_list')
+
+        batch_number = request.POST.get('batch_number', '').strip() or 'DEFAULT'
+        selling_price = max(Decimal('0.00'), _parse_decimal(request.POST.get('selling_price'), '0.00'))
+        mrp_raw = request.POST.get('mrp', '').strip()
+        mrp = max(Decimal('0.00'), _parse_decimal(mrp_raw, str(selling_price))) if mrp_raw else selling_price
+        cost_price = max(Decimal('0.00'), _parse_decimal(request.POST.get('cost_price'), '0.00'))
+        stock_qty = max(0, _parse_int(request.POST.get('stock_quantity'), 0))
         expiry_str = request.POST.get('expiry_date', '').strip()
 
         expiry_date = None
@@ -636,10 +705,14 @@ def api_add_product_manual(request):
             except ValueError:
                 pass
 
-        category = Category.objects.filter(id=category_id, store=store).first() if category_id else None
+        category = None
+        if new_category:
+            category, _ = Category.objects.get_or_create(store=store, name=new_category)
+        elif category_id:
+            category = Category.objects.filter(id=category_id, store=store).first()
 
         with transaction.atomic():
-            product, _ = Product.objects.get_or_create(
+            product, created = Product.objects.get_or_create(
                 store=store,
                 sku=sku,
                 defaults={
@@ -647,23 +720,150 @@ def api_add_product_manual(request):
                     'category': category,
                     'unit': unit,
                     'hsn_code': hsn_code,
-                    'gst_rate': gst_rate
+                    'gst_rate': gst_rate,
+                    'min_stock_alert': min_stock_alert,
                 }
             )
 
-            Batch.objects.create(
-                product=product,
-                batch_number=batch_number or 'DEFAULT',
-                expiry_date=expiry_date,
-                selling_price=selling_price,
-                mrp=mrp or selling_price,
-                cost_price=cost_price,
-                current_stock=stock_qty
-            )
+            if not created:
+                product.is_active = True
+                product.name = name
+                if category:
+                    product.category = category
+                product.unit = unit
+                product.hsn_code = hsn_code
+                product.gst_rate = gst_rate
+                product.min_stock_alert = min_stock_alert
+                product.save()
 
+            existing_batch = Batch.objects.filter(
+                product=product,
+                batch_number=batch_number,
+                expiry_date=expiry_date
+            ).first()
+
+            if existing_batch:
+                existing_batch.selling_price = selling_price
+                existing_batch.mrp = mrp
+                existing_batch.cost_price = cost_price
+                existing_batch.current_stock += stock_qty
+                existing_batch.save()
+            else:
+                Batch.objects.create(
+                    product=product,
+                    batch_number=batch_number,
+                    expiry_date=expiry_date,
+                    selling_price=selling_price,
+                    mrp=mrp,
+                    cost_price=cost_price,
+                    current_stock=stock_qty
+                )
+
+        messages.success(request, f'Saved "{name}" (Stock: {stock_qty} {unit}, Cost: ₹{cost_price:.2f}, Sell: ₹{selling_price:.2f}).')
         return redirect('inventory_list')
     except Exception as e:
-        return render(request, 'inventory_list.html', {'error': f'Failed to add product: {str(e)}', 'store': store})
+        messages.error(request, f'Failed to add product: {str(e)}')
+        return redirect('inventory_list')
+
+
+@login_required
+@require_http_methods(["POST"])
+def api_edit_product(request, product_id):
+    """Update product details and active batch pricing/cost/stock."""
+    store = get_user_store(request)
+    product = get_object_or_404(Product, id=product_id, store=store)
+
+    try:
+        name = request.POST.get('name', '').strip() or product.name
+        sku = request.POST.get('sku', '').strip() or product.sku
+        category_id = request.POST.get('category_id', '').strip()
+        new_category = request.POST.get('new_category', '').strip()
+        unit = request.POST.get('unit', product.unit).strip() or product.unit
+        hsn_code = request.POST.get('hsn_code', product.hsn_code).strip() or product.hsn_code
+        gst_rate = _parse_decimal(request.POST.get('gst_rate'), str(product.gst_rate))
+        min_stock_alert = max(0, _parse_int(request.POST.get('min_stock_alert'), product.min_stock_alert))
+
+        selling_price = max(Decimal('0.00'), _parse_decimal(request.POST.get('selling_price'), '0.00'))
+        mrp_raw = request.POST.get('mrp', '').strip()
+        mrp = max(Decimal('0.00'), _parse_decimal(mrp_raw, str(selling_price))) if mrp_raw else selling_price
+        cost_price = max(Decimal('0.00'), _parse_decimal(request.POST.get('cost_price'), '0.00'))
+        stock_qty = max(0, _parse_int(request.POST.get('stock_quantity'), 0))
+        batch_number = request.POST.get('batch_number', '').strip() or 'DEFAULT'
+        expiry_str = request.POST.get('expiry_date', '').strip()
+
+        expiry_date = None
+        if expiry_str:
+            try:
+                expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+
+        category = product.category
+        if new_category:
+            category, _ = Category.objects.get_or_create(store=store, name=new_category)
+        elif category_id:
+            category = Category.objects.filter(id=category_id, store=store).first()
+        elif category_id == '':
+            category = None
+
+        with transaction.atomic():
+            product.name = name
+            product.sku = sku
+            product.category = category
+            product.unit = unit
+            product.hsn_code = hsn_code
+            product.gst_rate = gst_rate
+            product.min_stock_alert = min_stock_alert
+            product.save()
+
+            batch_action = request.POST.get('batch_action', 'update').strip()
+            batch_id = request.POST.get('batch_id', '').strip()
+            batch = None
+            if batch_id:
+                batch = Batch.objects.filter(id=batch_id, product=product).first()
+            if not batch:
+                batch = product.active_batch
+
+            if batch_action == 'new_batch' or not batch:
+                Batch.objects.create(
+                    product=product,
+                    batch_number=batch_number,
+                    expiry_date=expiry_date,
+                    selling_price=selling_price,
+                    mrp=mrp,
+                    cost_price=cost_price,
+                    current_stock=stock_qty
+                )
+            else:
+                batch.batch_number = batch_number
+                batch.expiry_date = expiry_date
+                batch.selling_price = selling_price
+                batch.mrp = mrp
+                batch.cost_price = cost_price
+                if batch_action == 'add_stock':
+                    batch.current_stock += stock_qty
+                else:
+                    batch.current_stock = stock_qty
+                batch.save()
+
+        messages.success(request, f'Updated "{product.name}" successfully.')
+    except Exception as e:
+        messages.error(request, f'Failed to update product: {str(e)}')
+
+    return redirect('inventory_list')
+
+
+def _delete_or_archive_product(product):
+    """Delete unbilled product completely, or soft-archive if referenced by past invoices."""
+    product.batches.all().delete()
+    try:
+        with transaction.atomic():
+            product.delete()
+        return 'deleted'
+    except ProtectedError:
+        product.is_active = False
+        product.save(update_fields=['is_active'])
+        return 'archived'
 
 
 @login_required
@@ -673,21 +873,79 @@ def api_delete_product(request, product_id):
     """API endpoint to delete a product from shopkeeper's store."""
     store = get_user_store(request)
     product = get_object_or_404(Product, id=product_id, store=store)
-    
+
     try:
-        with transaction.atomic():
-            product.batches.all().delete()
-            product.delete()
-        return JsonResponse({'success': True, 'message': 'Product deleted successfully'})
+        outcome = _delete_or_archive_product(product)
+        msg = 'Product deleted successfully' if outcome == 'deleted' else 'Product removed from inventory (invoice history preserved)'
+        return JsonResponse({'success': True, 'outcome': outcome, 'message': msg})
     except Exception as e:
         return JsonResponse({'error': f'Failed to delete product: {str(e)}'}, status=500)
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_delete_selected_products(request):
+    """API endpoint to delete multiple selected products from shopkeeper's store."""
+    store = get_user_store(request)
+    try:
+        data = json.loads(request.body or '{}')
+        product_ids = data.get('product_ids', [])
+        if not product_ids:
+            return JsonResponse({'error': 'No products selected'}, status=400)
+
+        products_qs = Product.objects.filter(store=store, is_active=True, id__in=product_ids)
+        deleted_count = 0
+        archived_count = 0
+        for prod in products_qs:
+            if _delete_or_archive_product(prod) == 'deleted':
+                deleted_count += 1
+            else:
+                archived_count += 1
+
+        total = deleted_count + archived_count
+        return JsonResponse({
+            'success': True,
+            'deleted_count': deleted_count,
+            'archived_count': archived_count,
+            'message': f'Removed {total} selected product(s) from inventory.'
+        })
+    except Exception as e:
+        return JsonResponse({'error': f'Failed to delete selected products: {str(e)}'}, status=500)
+
+
+@login_required
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_delete_all_products(request):
+    """API endpoint to delete all active products from shopkeeper's store."""
+    store = get_user_store(request)
+    try:
+        products_qs = list(Product.objects.filter(store=store, is_active=True))
+        deleted_count = 0
+        archived_count = 0
+        for prod in products_qs:
+            if _delete_or_archive_product(prod) == 'deleted':
+                deleted_count += 1
+            else:
+                archived_count += 1
+
+        total = deleted_count + archived_count
+        return JsonResponse({
+            'success': True,
+            'deleted_count': deleted_count,
+            'archived_count': archived_count,
+            'message': f'All {total} product(s) removed from inventory.'
+        })
+    except Exception as e:
+        return JsonResponse({'error': f'Failed to delete all products: {str(e)}'}, status=500)
 
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def api_import_excel_stock(request):
     """
-    Bulletproof Bulk Excel (.xlsx / .xls) & CSV Stock Import Engine.
+    Bulletproof Bulk Excel (.xlsx) & CSV Stock Import Engine.
     """
     store = get_user_store(request)
 
@@ -696,13 +954,16 @@ def api_import_excel_stock(request):
 
     uploaded_file = request.FILES['file']
     filename = uploaded_file.name.lower()
+    update_mode = request.POST.get('update_mode', 'add').strip()
+    if update_mode not in ('add', 'replace', 'prices_only'):
+        update_mode = 'add'
 
     imported_count = 0
     updated_count = 0
 
     try:
         rows = []
-        if filename.endswith('.xlsx') or filename.endswith('.xls'):
+        if filename.endswith('.xlsx'):
             wb = openpyxl.load_workbook(uploaded_file, data_only=True)
             sheet = wb.active
             for row in sheet.iter_rows(values_only=True):
@@ -715,10 +976,43 @@ def api_import_excel_stock(request):
             header_raw = [str(cell).strip() if cell is not None else '' for cell in rows[0]]
             data_rows = rows[1:]
 
+        elif filename.endswith('.xls'):
+            try:
+                wb = openpyxl.load_workbook(uploaded_file, data_only=True)
+                sheet = wb.active
+                for row in sheet.iter_rows(values_only=True):
+                    if row and any(cell is not None and str(cell).strip() != '' for cell in row):
+                        rows.append(row)
+                if not rows:
+                    return JsonResponse({'error': 'Excel file is empty'}, status=400)
+                header_raw = [str(cell).strip() if cell is not None else '' for cell in rows[0]]
+                data_rows = rows[1:]
+            except Exception:
+                return JsonResponse({'error': 'Legacy .xls binary format is not supported. Please save the sheet as .xlsx or .csv and upload again.'}, status=400)
+
         elif filename.endswith('.csv'):
-            decoded_file = uploaded_file.read().decode('utf-8-sig').splitlines()
-            reader = csv.reader(decoded_file)
-            raw_rows = list(reader)
+            raw_bytes = uploaded_file.read()
+            decoded_text = None
+            for enc in ('utf-8-sig', 'cp1252', 'latin-1'):
+                try:
+                    decoded_text = raw_bytes.decode(enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if decoded_text is None:
+                return JsonResponse({'error': 'Unable to decode CSV file encoding. Please save as UTF-8 CSV.'}, status=400)
+
+            lines = decoded_text.splitlines()
+            sample = '\n'.join(lines[:10])
+            delimiter = ','
+            try:
+                dialect = csv.Sniffer().sniff(sample, delimiters=',;\t|')
+                delimiter = dialect.delimiter
+            except csv.Error:
+                pass
+
+            reader = csv.reader(lines, delimiter=delimiter)
+            raw_rows = [r for r in reader if r and any(str(c).strip() != '' for c in r)]
             if not raw_rows:
                 return JsonResponse({'error': 'CSV file is empty'}, status=400)
             
@@ -726,24 +1020,50 @@ def api_import_excel_stock(request):
             data_rows = raw_rows[1:]
 
         else:
-            return JsonResponse({'error': 'Unsupported file format. Please upload .xlsx or .csv Excel sheet.'}, status=400)
+            return JsonResponse({'error': 'Unsupported file format. Please upload .xlsx or .csv stock sheet.'}, status=400)
 
         def clean_num(val, default="0"):
             if val is None:
                 return default
-            val_str = str(val).strip()
-            cleaned = re.sub(r'[^\d.]', '', val_str)
-            return cleaned if cleaned else default
+            val_str = str(val).strip().replace(',', '')
+            if not val_str:
+                return default
+            match = re.search(r'\d+(?:\.\d+)?', val_str)
+            return match.group(0) if match else default
 
-        def find_col_val(row_dict, keywords):
-            for raw_key, val in row_dict.items():
-                if val is None or str(val).strip() == '':
-                    continue
-                key_clean = re.sub(r'[^a-z0-9]', '', str(raw_key).lower())
-                for kw in keywords:
-                    kw_clean = re.sub(r'[^a-z0-9]', '', kw.lower())
-                    if kw_clean in key_clean:
+        def find_col_val(row_items, keywords, exclude_keywords=()):
+            """
+            Match columns in keyword-priority order so exact and specific headers
+            always beat generic substrings regardless of CSV column order.
+            """
+            # Pass 1: exact normalized header match in keyword priority order
+            for kw in keywords:
+                kw_clean = re.sub(r'[^a-z0-9]', '', kw.lower())
+                for raw_key, val in row_items:
+                    if val is None or str(val).strip() == '':
+                        continue
+                    key_clean = re.sub(r'[^a-z0-9]', '', str(raw_key).lower())
+                    if not key_clean:
+                        continue
+                    if key_clean == kw_clean:
                         return str(val).strip(), val
+
+            # Pass 2: token or substring match in keyword priority order
+            for kw in keywords:
+                kw_clean = re.sub(r'[^a-z0-9]', '', kw.lower())
+                for raw_key, val in row_items:
+                    if val is None or str(val).strip() == '':
+                        continue
+                    raw_lower = str(raw_key).lower()
+                    key_clean = re.sub(r'[^a-z0-9]', '', raw_lower)
+                    if not key_clean:
+                        continue
+                    if any(ex in key_clean for ex in exclude_keywords):
+                        continue
+                    tokens = re.findall(r'[a-z0-9]+', raw_lower)
+                    if kw_clean in tokens or (len(kw_clean) >= 3 and kw_clean in key_clean):
+                        return str(val).strip(), val
+
             return '', None
 
         with transaction.atomic():
@@ -751,20 +1071,44 @@ def api_import_excel_stock(request):
                 if not r or not any(cell is not None and str(cell).strip() != '' for cell in r):
                     continue
 
-                row_dict = dict(zip(header_raw, r))
+                row_items = [(header_raw[i], r[i]) for i in range(min(len(header_raw), len(r)))]
 
-                prod_name_str, _ = find_col_val(row_dict, ['productname', 'itemname', 'name', 'product', 'item', 'description', 'title', 'perfume'])
-                sku_str, _ = find_col_val(row_dict, ['sku', 'barcode', 'code', 'productcode', 'itemcode', 'upc', 'hsn'])
-                cat_str, _ = find_col_val(row_dict, ['category', 'group', 'type'])
-                unit_str, _ = find_col_val(row_dict, ['unit', 'uom', 'pack', 'bottle'])
-                
-                sell_price_str, _ = find_col_val(row_dict, ['sellingprice', 'price', 'rate', 'sp', 'mrp'])
-                mrp_str, _ = find_col_val(row_dict, ['mrp', 'maxretailprice'])
-                cost_price_str, _ = find_col_val(row_dict, ['costprice', 'cost', 'purchaseprice', 'purchaserate', 'cp'])
-                
-                stock_str, _ = find_col_val(row_dict, ['stockquantity', 'stock', 'qty', 'quantity', 'count', 'units'])
-                batch_str, _ = find_col_val(row_dict, ['batchnumber', 'batchno', 'batch', 'lot'])
-                exp_str, raw_exp_val = find_col_val(row_dict, ['expirydate', 'expiry', 'expdate', 'exp'])
+                prod_name_str, _ = find_col_val(
+                    row_items,
+                    ['productname', 'itemname', 'producttitle', 'itemtitle', 'name', 'product', 'item', 'description', 'title', 'perfume'],
+                    exclude_keywords=('code', 'sku', 'barcode', 'category', 'group', 'type', 'price', 'cost', 'unit', 'batch')
+                )
+                sku_str, _ = find_col_val(
+                    row_items,
+                    ['skubarcode', 'sku', 'barcode', 'productcode', 'itemcode', 'upc', 'ean', 'code', 'hsn'],
+                    exclude_keywords=('price', 'cost', 'name', 'stock', 'qty')
+                )
+                cat_str, _ = find_col_val(row_items, ['category', 'categoryname', 'group', 'producttype', 'type'])
+                unit_str, _ = find_col_val(
+                    row_items,
+                    ['unit', 'uom', 'unitofmeasure', 'pack', 'bottle'],
+                    exclude_keywords=('price', 'cost', 'rate', 'stock', 'qty', 'quantity', 'count')
+                )
+
+                cost_price_str, _ = find_col_val(
+                    row_items,
+                    ['costprice', 'purchaseprice', 'purchaserate', 'purchasecost', 'buyingprice', 'buyprice', 'unitcost', 'landingcost', 'wholesaleprice', 'costrate', 'cost', 'cp']
+                )
+                sell_price_str, _ = find_col_val(
+                    row_items,
+                    ['sellingprice', 'saleprice', 'sellprice', 'retailprice', 'unitprice', 'sellingrate', 'salerate', 'price', 'rate', 'sp', 'mrp'],
+                    exclude_keywords=('cost', 'purchase', 'buy', 'buying', 'landing', 'wholesale')
+                )
+                mrp_str, _ = find_col_val(row_items, ['mrp', 'maxretailprice', 'maximumretailprice'])
+
+                stock_str, _ = find_col_val(
+                    row_items,
+                    ['stockquantity', 'stockqty', 'currentstock', 'openingstock', 'quantity', 'qty', 'stock', 'count', 'units']
+                )
+                batch_str, _ = find_col_val(row_items, ['batchnumber', 'batchno', 'batch', 'lotnumber', 'lotno', 'lot'])
+                exp_str, raw_exp_val = find_col_val(row_items, ['expirydate', 'expdate', 'expiry', 'exp'])
+                hsn_str, _ = find_col_val(row_items, ['hsncode', 'hsn', 'sac'])
+                gst_str, _ = find_col_val(row_items, ['gstrate', 'gst', 'taxrate', 'tax'])
 
                 if not prod_name_str and len(r) > 0 and r[0]:
                     prod_name_str = str(r[0]).strip()
@@ -779,9 +1123,11 @@ def api_import_excel_stock(request):
                 batch_number = batch_str or 'DEFAULT'
 
                 selling_price = Decimal(clean_num(sell_price_str, "0.00"))
-                mrp = Decimal(clean_num(mrp_str, str(selling_price)))
+                mrp = Decimal(clean_num(mrp_str, str(selling_price))) if mrp_str else selling_price
                 cost_price = Decimal(clean_num(cost_price_str, "0.00"))
                 stock_qty = int(float(clean_num(stock_str, "0")))
+                gst_rate = Decimal(clean_num(gst_str, "18.00")) if gst_str else Decimal('18.00')
+                hsn_code = hsn_str or '3303'
 
                 expiry_date = None
                 if isinstance(raw_exp_val, (date, datetime)):
@@ -806,38 +1152,65 @@ def api_import_excel_stock(request):
                         'name': prod_name_str,
                         'category': category,
                         'unit': unit,
-                        'gst_rate': Decimal('18.00')
+                        'hsn_code': hsn_code,
+                        'gst_rate': gst_rate,
                     }
                 )
 
                 if created:
                     imported_count += 1
                 else:
+                    product.is_active = True
                     product.name = prod_name_str
                     if category:
                         product.category = category
+                    if unit_str:
+                        product.unit = unit_str
+                    if hsn_str:
+                        product.hsn_code = hsn_str
+                    if gst_str:
+                        product.gst_rate = gst_rate
                     product.save()
                     updated_count += 1
 
-                Batch.objects.create(
+                existing_batch = Batch.objects.filter(
                     product=product,
                     batch_number=batch_number,
-                    expiry_date=expiry_date,
-                    cost_price=cost_price,
-                    selling_price=selling_price,
-                    mrp=mrp,
-                    current_stock=stock_qty
-                )
+                    expiry_date=expiry_date
+                ).first()
+
+                if existing_batch:
+                    if cost_price_str:
+                        existing_batch.cost_price = cost_price
+                    if sell_price_str:
+                        existing_batch.selling_price = selling_price
+                    if mrp_str or sell_price_str:
+                        existing_batch.mrp = mrp
+                    if update_mode == 'replace':
+                        existing_batch.current_stock = stock_qty
+                    elif update_mode == 'add':
+                        existing_batch.current_stock += stock_qty
+                    existing_batch.save()
+                else:
+                    Batch.objects.create(
+                        product=product,
+                        batch_number=batch_number,
+                        expiry_date=expiry_date,
+                        cost_price=cost_price,
+                        selling_price=selling_price,
+                        mrp=mrp,
+                        current_stock=0 if (not created and update_mode == 'prices_only') else stock_qty
+                    )
 
         return JsonResponse({
             'success': True,
             'imported_count': imported_count,
             'updated_count': updated_count,
-            'message': f"Excel import successful! Added {imported_count} new product(s) and updated {updated_count} stock count(s)."
+            'message': f"Import successful! Added {imported_count} new product(s) and updated {updated_count} product(s)."
         })
 
     except Exception as e:
-        return JsonResponse({'error': f"Failed to parse Excel file: {str(e)}"}, status=500)
+        return JsonResponse({'error': f"Failed to parse stock sheet: {str(e)}"}, status=500)
 
 
 @login_required
@@ -867,7 +1240,26 @@ def api_download_sample_excel(request):
     buffer.seek(0)
 
     response = HttpResponse(buffer.getvalue(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    response['Content-Disposition'] = 'attachment; filename="isbms_sample_stock_template.xlsx"'
+    response['Content-Disposition'] = 'attachment; filename="vyapaarsetu_sample_stock_template.xlsx"'
+    return response
+
+
+@login_required
+def api_download_sample_csv(request):
+    """Generates downloadable sample CSV template."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Product Name", "SKU / Barcode", "Category", "Unit",
+        "Selling Price", "MRP", "Cost Price", "Stock Quantity",
+        "Batch Number", "Expiry Date (YYYY-MM-DD)"
+    ])
+    writer.writerow(["Chanel Bleu De Perfume 100ml", "8903333111111", "Perfumes", "Bottle", "4500.00", "5000.00", "3800.00", "20", "LOT-PERF-01", "2029-12-31"])
+    writer.writerow(["Men Slim Fit Denim Shirt (Blue)", "8904444222222", "Apparel", "Pcs", "1299.00", "1599.00", "850.00", "30", "LOT-DENIM-26", ""])
+    writer.writerow(["Fortune Sunflower Oil 1L", "8901234567890", "Grocery", "Ltr", "145.00", "160.00", "125.00", "50", "B-OIL-2026", "2027-06-30"])
+
+    response = HttpResponse(output.getvalue(), content_type="text/csv; charset=utf-8")
+    response['Content-Disposition'] = 'attachment; filename="vyapaarsetu_sample_stock_template.csv"'
     return response
 
 

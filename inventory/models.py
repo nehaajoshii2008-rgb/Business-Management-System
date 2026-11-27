@@ -99,6 +99,32 @@ class Product(models.Model):
         return total or 0
 
     @property
+    def active_batch(self):
+        """Return the active FIFO batch with stock > 0, or the most recently created batch."""
+        batches = list(self.batches.all())
+        if not batches:
+            return None
+        in_stock = [b for b in batches if b.current_stock > 0]
+        if in_stock:
+            return in_stock[0]
+        return max(batches, key=lambda b: (b.created_at, b.id))
+
+    @property
+    def selling_price(self):
+        batch = self.active_batch
+        return batch.selling_price if batch else Decimal('0.00')
+
+    @property
+    def cost_price(self):
+        batch = self.active_batch
+        return batch.cost_price if batch else Decimal('0.00')
+
+    @property
+    def mrp(self):
+        batch = self.active_batch
+        return batch.mrp if batch else Decimal('0.00')
+
+    @property
     def is_low_stock(self):
         return self.total_stock <= self.min_stock_alert
 

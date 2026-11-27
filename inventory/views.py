@@ -246,12 +246,10 @@ def delete_account_view(request):
     """Shopkeeper Account Deletion View."""
     if request.method == 'POST':
         user = request.user
-        if not user.is_superuser:
-            with transaction.atomic():
-                if hasattr(user, 'store'):
-                    user.store.delete()
-                user.delete()
+        if not user.is_superuser and user.username.lower() != 'admin':
+            store = getattr(user, 'store', None)
             logout(request)
+            _delete_user_and_store_cascade(user=user, store=store)
             return redirect('landing')
     return render(request, 'confirm_delete_account.html')
 

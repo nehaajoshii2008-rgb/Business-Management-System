@@ -269,7 +269,12 @@ def admin_dashboard(request):
 
     stores_qs = StoreProfile.objects.exclude(owner__username__iexact='admin').select_related('owner')
     if query:
-        stores_qs = stores_qs.filter(Q(name__icontains=query) | Q(phone__icontains=query) | Q(pan_number__icontains=query))
+        stores_qs = stores_qs.filter(
+            Q(name__icontains=query)
+            | Q(phone__icontains=query)
+            | Q(pan_number__icontains=query)
+            | Q(owner__username__icontains=query)
+        )
 
     stores_data = []
     total_system_revenue = Decimal('0.00')
